@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+tmp/
+*.pdfwrite
+*.mdb
+*.mde
+*.accdb
+*.accde
+*.ldb
+*.laccdb
+/publish/
+.vs/
+*.user
+*.suo
+*.pubxml.user
+*.pdf
