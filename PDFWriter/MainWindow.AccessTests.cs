@@ -3,7 +3,7 @@ using System.Windows;
 
 namespace PDFWriter;
 
-// Synthetic object model used by --editor-test. No database or patient values.
+// Synthetic object model used by --editor-test. Only fabricated patient values; no database access.
 public sealed class FakeAccessCollection(params object[] items)
 {
     public int Count => items.Length;
@@ -28,10 +28,10 @@ public sealed class FakeAccessApp(FakeAccessForm target)
 }
 public sealed class FakeAccessDatabase { public string Name => @"D:\Clinical\client.mdb"; }
 public sealed class FakePatientValue(object? value) { public object? Value => value; }
-public sealed class FakePatientControls(bool changePatient = false)
+public sealed class FakePatientControls(bool changePatient = false, object? clinical = null, object? draft = null)
 {
     private int idReads;
-    public object this[string name] => new FakePatientValue(name switch
+    public object this[string name] => name == "受診症状サブフォーム" && draft != null ? draft : name == "受診カルテサブ" && clinical != null ? clinical : new FakePatientValue(name switch
     {
         "カルテ番号" => changePatient && ++idReads > 1 ? "002" : "001",
         "住所２" => DBNull.Value,
@@ -60,12 +60,55 @@ public sealed class FakeAccessControl(string name, int type, string source = "",
     public string Value => throw new InvalidOperationException("Patient values must never be read by structure inspection");
     public string Text => throw new InvalidOperationException("Patient text must never be read by structure inspection");
 }
+public sealed class FakeMonitorForm(bool newRecord, bool changePatient, object? clinical, object? draft = null)
+{
+    public FakeBirthdayRecord Recordset => new();
+    public bool NewRecord => newRecord;
+    public FakePatientControls Controls { get; } = new(changePatient, clinical, draft);
+}
+public sealed class FakeMonitorForms(bool newRecord, bool changePatient, object? clinical, object? draft = null)
+{
+    public object this[string name] => name == "患者マスター" ? new FakeMonitorForm(newRecord, changePatient, clinical, draft) : throw new InvalidOperationException();
+}
+public sealed class FakeMonitorApp(bool exists = true, bool loaded = true, bool newRecord = false, bool changePatient = false, object? clinical = null, object? draft = null)
+{
+    public FakeAccessProject CurrentProject => new(new FakeAccessCollection(new FakeAccessMetadata(exists ? "患者マスター" : "別フォーム", loaded)));
+    public FakeMonitorForms Forms => loaded ? new(newRecord, changePatient, clinical, draft) : throw new InvalidOperationException("Closed forms must not be read");
+}
 public partial class MainWindow
 {
     private async Task CheckAccessConnection(string folder, AppSettings config)
     {
+        Check(!AccessSession.ReadAutomaticPatient(new FakeMonitorApp(exists: false)).Detected, "Unrelated Access database is not a chart");
+        var waiting = AccessSession.ReadAutomaticPatient(new FakeMonitorApp(loaded: false));
+        Check(waiting.Detected && waiting.Text == "", "Existing but closed patient form waits without opening it");
+        Check(AccessSession.ReadAutomaticPatient(new FakeMonitorApp(newRecord: true)).Text == "", "New record must not retain previous patient");
+        var live = CheckClinicalNotes() with { Medication = CheckMedicationHistory() };
+        Check(live.Detected && live.Text.Contains("カルテ番号：001"), "Auto display reads current patient");
+        ShowChart(live);
+        var patientValue = (System.Windows.Controls.TextBox)PatientFieldsGrid.Children[1];
+        patientValue.Select(0, 1);
+        ShowChart(live);
+        Check(patientValue.SelectionLength == 1, "Unchanged polling preserves text selection for copy");
+        ShowChart(waiting);
+        Check(PatientFieldsGrid.Children.Count == 0 && ChartPlaceholder.Visibility == Visibility.Visible, "Lost source clears previous patient");
+        try
+        {
+            AccessSession.ReadAutomaticPatient(new FakeMonitorApp(changePatient: true));
+            throw new InvalidOperationException("Expected auto monitor patient switch detection");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("切り替わりました")) { }
+        Check(AccessSession.FormatPatientSex("2") == "女" && AccessSession.FormatPatientSex("") == "未登録" && AccessSession.FormatPatientSex("9").Contains("不明"), "Sex labels and unknown codes");
+        Check(AccessSession.ReadPatientBirthday(new FakeMonitorForm(false, false, null)) == "昭和55年4月15日（1980年4月15日）", "Birthday comes from current record fields");
+        Check(live.Text.Contains("生年月日：昭和55年4月15日"), "Birthday appears in automatic patient panel");
+        Check(AccessSession.FormatPatientBirthday("", "", "", "") == "未登録", "Empty birthday");
+        Check(AccessSession.FormatPatientBirthday("平成", "元", "1", "8") == "平成元年1月8日（1989年1月8日）", "Preserve Japanese era year");
+        Check(AccessSession.FormatPatientBirthday("令和", "1", "5", "").Contains("不明日"), "Partial birthday does not invent a day");
+        Check(AccessSession.FormatPatientBirthday("令和", "元", "5", "1").EndsWith("（2019年5月1日）"), "Reiwa conversion");
+        Check(!AccessSession.FormatPatientBirthday("平成", "31", "5", "1").Contains('（'), "Reject a date outside the stated era");
+        Check(!AccessSession.FormatPatientBirthday("昭和", "55", "2", "30").Contains('（'), "Reject invalid calendar dates");
         var patientText = AccessSession.ReadPatientControls(new FakePatientControls());
-        Check(patientText.Split(Environment.NewLine).Length == 8 && patientText.Contains("性別コード１：1") && patientText.Contains("住所２："), "Patient eight fields and null/code values");
+        Check(patientText.Split(Environment.NewLine).Length == 8 && patientText.Contains("性別：男") && patientText.Contains("住所２："), "Patient eight fields and null/code values");
         try
         {
             AccessSession.ReadPatientControls(new FakePatientControls(true));
@@ -80,6 +123,7 @@ public partial class MainWindow
         {
             dictionaryType.InvokeMember("Add", System.Reflection.BindingFlags.InvokeMethod, null, dictionary, new object[] { "test-key", "test-value" });
             Check(Convert.ToInt32(AccessDispatch.Get(dictionary, "Count")) == 1, "Real COM named property get");
+            Check(Convert.ToBoolean(AccessDispatch.Call(dictionary, "Exists", "test-key")), "Real COM method invocation");
             Check(Convert.ToString(AccessDispatch.Get(dictionary, "Item", "test-key")) == "test-value", "Real COM indexed property get");
         }
         finally { Marshal.ReleaseComObject(dictionary); }
@@ -129,9 +173,33 @@ public partial class MainWindow
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("COM登録")) { }
         }
+        ShowChart(live);
+        var medicationDay = (System.Windows.Controls.Expander)MedicationDays.Children[0];
+        medicationDay.IsExpanded = true;
+        UpdateLayout();
+        MedicationScroll.ScrollToBottom();
+        UpdateLayout();
+        RenderVisual((FrameworkElement)Content, System.IO.Path.Combine(folder, "medication-history.png"), 1300, 880);
+        medicationDay.IsExpanded = false;
         var window = new AccessWindow(config);
         window.ShowInspection(result);
         RenderVisual((FrameworkElement)window.Content, System.IO.Path.Combine(folder, "access.png"), 1080, 710);
         window.Close();
     }
+}
+
+public sealed class FakeBirthdayRecord
+{
+    public bool BOF => false;
+    public bool EOF => false;
+    public FakeBirthdayFields Fields => new();
+    public void Close() => throw new InvalidOperationException("Do not close the live form recordset");
+}
+public sealed class FakeBirthdayFields
+{
+    public object this[string name] => new FakePatientValue(name switch
+    {
+        "年号" => "昭和", "生年" => 55, "月" => 4, "日" => 15,
+        _ => throw new InvalidOperationException("Unexpected birthday field")
+    });
 }

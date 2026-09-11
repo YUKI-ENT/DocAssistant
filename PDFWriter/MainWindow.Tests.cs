@@ -37,7 +37,41 @@ public partial class MainWindow
             await LoadPdf(await File.ReadAllBytesAsync("cyokakuheikoikensyo.pdf"), null, null);
             Check(views.Count == 5, "Expected five pages");
             await CheckStablePageViewport();
+            CheckTextPlacement();
             var first = views[0].Canvas;
+            foreach (var format in new[] { ChartDragFormat, DataFormats.UnicodeText, DataFormats.Text })
+            {
+                var dragData = new DataObject();
+                dragData.SetData(format, "ドラッグ受付確認");
+                foreach (var dragEvent in new[] { DragDrop.PreviewDragEnterEvent, DragDrop.PreviewDragOverEvent })
+                {
+                    var args = (DragEventArgs)Activator.CreateInstance(typeof(DragEventArgs),
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null,
+                        new object[] { dragData, DragDropKeyStates.LeftMouseButton, DragDropEffects.Copy, first, new Point(100, 200) }, null)!;
+                    args.RoutedEvent = dragEvent;
+                    first.RaiseEvent(args);
+                    Check(args.Handled && args.Effects == DragDropEffects.Copy, "Page accepts routed text drag before InkCanvas: " + format);
+                }
+            }
+            var fileData = new DataObject(DataFormats.FileDrop, new[] { "example.pdf" });
+            Check(GetDraggedChartText(fileData) == null, "Non-text drag is rejected");
+            var beforeDrop = Snapshot();
+            InsertChartText(first, new Point(100, 200), "山田 太郎\nドラッグ挿入の確認");
+            var dropped = first.Children.OfType<TextBox>().Single();
+            Check(dropped.Text == "山田 太郎\r\nドラッグ挿入の確認" && InkCanvas.GetLeft(dropped) == 100 &&
+                InkCanvas.GetTop(dropped) > 150 && InkCanvas.GetTop(dropped) <= 200, "Chart drop inserts multiline text at page coordinates");
+            Check(Capture().Pages[0].Single().Text == dropped.Text && dirty, "Dropped text is included in saved annotations");
+            Undo();
+            Check(Snapshot() == beforeDrop, "One undo removes chart insertion");
+            Redo();
+            Check(first.Children.OfType<TextBox>().Single().Text.Contains("ドラッグ挿入"), "Redo restores chart insertion");
+            Undo();
+            InsertChartText(first, new Point(first.Width, first.Height), "端の文字");
+            var edge = first.Children.OfType<TextBox>().Single();
+            Check(InkCanvas.GetLeft(edge) + edge.Width <= first.Width && InkCanvas.GetTop(edge) + edge.Height <= first.Height,
+                "Drop at page edge stays within the page");
+            Undo();
+            ResetHistory();
             AddText(first, new TextData { X = 120, Y = 400 });
             CleanupEmptyText(); CommitHistory();
             Check(first.Children.Count == 0 && historyIndex == 0 && !dirty, "Empty frame must disappear without adding history or dirty state");
@@ -136,6 +170,45 @@ public partial class MainWindow
             if (original != null) MarkSaved();
             Application.Current.Shutdown(1);
         }
+    }
+    private void CheckTextPlacement()
+    {
+        var canvas = views[0].Canvas;
+        foreach (var font in new[] { "Yu Gothic", "Yu Mincho" })
+        foreach (var size in new double[] { 8, 14, 48 })
+        {
+            FontFamilyBox.SelectedItem = font;
+            FontSizeBox.SelectedItem = size;
+            var box = AddTextAt(canvas, new Point(150, 300));
+            canvas.UpdateLayout();
+            var caret = box.GetRectFromCharacterIndex(0);
+            Check(!caret.IsEmpty && Math.Abs(InkCanvas.GetTop(box) + caret.Top + caret.Height / 2 - 300) < 1,
+                $"{font}/{size}: click must align with the first line center");
+            var top = InkCanvas.GetTop(box);
+            var initialHeight = box.Height;
+            box.Text = "記入例\r\n";
+            canvas.UpdateLayout();
+            Check(box.Height > initialHeight && InkCanvas.GetTop(box) == top, "Return grows downward including an empty last line");
+            box.Text += "二行目";
+            canvas.UpdateLayout();
+            var last = box.GetRectFromCharacterIndex(box.Text.Length);
+            Check(last.Bottom <= box.ActualHeight, "Last line must fit inside the frame");
+            Check(Capture().Pages[0].Single().Text == "記入例\r\n二行目", "Saved text uses CRLF");
+            box.Width = 60;
+            box.Text = string.Concat(Enumerable.Repeat("折り返し", 12));
+            canvas.UpdateLayout();
+            Check(box.Height > initialHeight * 2 && InkCanvas.GetTop(box) == top, "Wrapping grows downward");
+            canvas.Children.Remove(box);
+        }
+        FontFamilyBox.SelectedItem = "Yu Gothic";
+        FontSizeBox.SelectedItem = 14d;
+        var edge = AddTextAt(canvas, new Point(canvas.Width, canvas.Height));
+        edge.Text = string.Concat(Enumerable.Repeat("行\r\n", 20));
+        canvas.UpdateLayout();
+        Check(InkCanvas.GetLeft(edge) >= 0 && InkCanvas.GetTop(edge) >= 0 &&
+            InkCanvas.GetTop(edge) + edge.Height <= canvas.Height, "Frame stays within page edges");
+        canvas.Children.Remove(edge);
+        ResetHistory();
     }
     private async Task CheckStablePageViewport()
     {

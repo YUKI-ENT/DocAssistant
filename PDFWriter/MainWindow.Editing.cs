@@ -25,6 +25,7 @@ public partial class MainWindow
         // Focusing the page (including InkCanvas's native pen/selection handling)
         // requests BringIntoView for the whole page. That would scroll under the
         // pointer after mouse coordinates have already been captured.
+        canvas.AllowDrop = true;
         canvas.RequestBringIntoView += (_, e) => e.Handled = true;
         canvas.Strokes.StrokesChanged += (_, _) => PendingEdit();
         canvas.StrokeCollected += (_, _) => CommitHistory();
@@ -48,7 +49,7 @@ public partial class MainWindow
     {
         var box = new TextBox
         {
-            Text = data.Text, Width = Math.Clamp(data.Width, 30, canvas.Width), Height = Math.Clamp(data.Height, 24, canvas.Height),
+            Text = data.Text.ReplaceLineEndings("\r\n"), Width = Math.Clamp(data.Width, 30, canvas.Width), Height = Math.Clamp(data.Height, 1, canvas.Height),
             FontSize = Math.Clamp(data.FontSize, 6, 100), FontFamily = new FontFamily(data.FontFamily), Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(data.ColorHex)),
             AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, IsUndoEnabled = false,
             Background = Brushes.Transparent, BorderBrush = Brushes.LightSteelBlue, BorderThickness = new Thickness(1),
@@ -56,7 +57,8 @@ public partial class MainWindow
         };
         InkCanvas.SetLeft(box, Math.Clamp(data.X, 0, canvas.Width - box.Width));
         InkCanvas.SetTop(box, Math.Clamp(data.Y, 0, canvas.Height - box.Height));
-        box.TextChanged += (_, _) => PendingEdit();
+        box.TextChanged += (_, _) => { GrowTextBox(canvas, box); PendingEdit(); };
+        box.SizeChanged += (_, e) => { if (e.WidthChanged) GrowTextBox(canvas, box); };
         box.GotKeyboardFocus += (_, _) => activeText = box;
         box.LostKeyboardFocus += (_, _) =>
         {
@@ -76,6 +78,45 @@ public partial class MainWindow
         delete.Click += (_, _) => { CommitHistory(); canvas.Children.Remove(box); if (activeText == box) activeText = null; CommitHistory(); };
         menu.Items.Add(delete); box.ContextMenu = menu;
         canvas.Children.Add(box);
+        return box;
+    }
+    private static double MeasureTextHeight(TextBox box)
+    {
+        // A zero-width character gives empty text and a trailing CRLF a full line.
+        // Use the same TextBlock layout and inset as the print overlay.
+        var probe = new TextBlock
+        {
+            Text = box.Text + "\u200B", FontFamily = box.FontFamily, FontSize = box.FontSize,
+            FontStyle = box.FontStyle, FontWeight = box.FontWeight, FontStretch = box.FontStretch,
+            Padding = new Thickness(box.Padding.Left + box.BorderThickness.Left,
+                box.Padding.Top + box.BorderThickness.Top,
+                box.Padding.Right + box.BorderThickness.Right,
+                box.Padding.Bottom + box.BorderThickness.Bottom),
+            TextWrapping = box.TextWrapping
+        };
+        probe.Measure(new Size(box.Width, double.PositiveInfinity));
+        return Math.Max(1, Math.Ceiling(probe.DesiredSize.Height));
+    }
+    private static void GrowTextBox(InkCanvas canvas, TextBox box)
+    {
+        // Keep the first line and manually enlarged frames in place. At the page
+        // bottom the existing scrollbar handles content that cannot fit on the page.
+        var available = Math.Max(0, canvas.Height - InkCanvas.GetTop(box));
+        var height = Math.Min(available, MeasureTextHeight(box));
+        if (height > box.Height) box.Height = height;
+    }
+    private TextBox AddTextAt(InkCanvas canvas, Point point)
+    {
+        var box = AddText(canvas, new TextData
+        {
+            X = point.X, Y = 0, Width = Math.Min(240, canvas.Width - point.X),
+            FontSize = FontSizeValue, FontFamily = FontFamilyValue, ColorHex = ColorHexValue
+        });
+        box.Height = Math.Min(canvas.Height, MeasureTextHeight(box));
+        canvas.UpdateLayout();
+        var caret = box.GetRectFromCharacterIndex(0);
+        var center = caret.IsEmpty ? box.Height / 2 : caret.Top + caret.Height / 2;
+        InkCanvas.SetTop(box, Math.Clamp(point.Y - center, 0, canvas.Height - box.Height));
         return box;
     }
     private ShapeElement AddShape(InkCanvas canvas, ShapeData data)
@@ -126,6 +167,7 @@ public partial class MainWindow
         {
             if (sender == FontFamilyBox) box.FontFamily = new FontFamily(FontFamilyValue);
             if (sender == FontSizeBox) box.FontSize = FontSizeValue;
+            if (box.Parent is InkCanvas canvas) GrowTextBox(canvas, box);
         }
         CommitHistory();
     }
@@ -185,7 +227,7 @@ public partial class MainWindow
         if (mode == "Text")
         {
             foreach (var view in views) view.Canvas.Select(new StrokeCollection(), Array.Empty<UIElement>());
-            activeText = AddText(canvas, new TextData { X = point.X, Y = point.Y, Width = Math.Min(240, canvas.Width - point.X), FontSize = FontSizeValue, FontFamily = FontFamilyValue, ColorHex = ColorHexValue });
+            activeText = AddTextAt(canvas, point);
             activeText.Focus(); e.Handled = true; return;
         }
         if (mode is not ("Select" or "Rectangle" or "Ellipse" or "Line")) return;

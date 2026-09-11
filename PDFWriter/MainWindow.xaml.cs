@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        EnableChartDrag(ChartDraft);
         FontFamilyBox.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(s => s).ToList();
         FontFamilyBox.SelectedItem = "Yu Gothic";
         FontSizeBox.ItemsSource = new double[] { 8, 10, 12, 14, 16, 18, 20, 24, 32, 48 };
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
                 if (args.Contains("--while-busy")) { await Guard(async () => { Close(); await Task.Delay(100); }); return; }
                 await Task.Delay(300); Close(); return;
             }
+            StartChartMonitor();
             await Guard(async () =>
             {
                 try { settings = AppSettings.Load(); }
@@ -78,6 +80,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         typingTimer.Stop();
+        StopChartMonitor();
         LifecycleLog.Write("Window.Closed");
         base.OnClosed(e);
     }
@@ -163,7 +166,11 @@ public partial class MainWindow : Window
             views.Clear(); views.AddRange(prepared); Pages.Children.Clear(); original = bytes;
             foreach (var view in views)
             {
-                var grid = new Grid { Width = view.Width, Height = view.Height, Background = Brushes.White };
+                var grid = new Grid { Width = view.Width, Height = view.Height, Background = Brushes.White, AllowDrop = true, Tag = view.Canvas };
+                // Receive text before InkCanvas/TextBox class handlers consume the drag events.
+                grid.PreviewDragEnter += ChartDragOver;
+                grid.PreviewDragOver += ChartDragOver;
+                grid.PreviewDrop += ChartDrop;
                 grid.Children.Add(new Image { Source = view.Background, Stretch = Stretch.Fill });
                 grid.Children.Add(view.Canvas); grid.Children.Add(view.Adorner);
                 Pages.Children.Add(new Border { Child = grid, Margin = new Thickness(0, 16, 0, 8), BorderBrush = new SolidColorBrush(Color.FromRgb(211, 220, 231)), BorderThickness = new Thickness(1), Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Opacity = .12 } });
@@ -179,7 +186,7 @@ public partial class MainWindow : Window
     {
         Pages = views.Select(view => view.Canvas.Children.OfType<TextBox>().Where(box => !string.IsNullOrWhiteSpace(box.Text)).Select(box => new TextData
         {
-            Text = box.Text, X = InkCanvas.GetLeft(box), Y = InkCanvas.GetTop(box), Width = box.Width, Height = box.Height, FontSize = box.FontSize, FontFamily = box.FontFamily.Source, ColorHex = ((SolidColorBrush)box.Foreground).Color.ToString()
+            Text = box.Text.ReplaceLineEndings("\r\n"), X = InkCanvas.GetLeft(box), Y = InkCanvas.GetTop(box), Width = box.Width, Height = box.Height, FontSize = box.FontSize, FontFamily = box.FontFamily.Source, ColorHex = ((SolidColorBrush)box.Foreground).Color.ToString()
         }).ToList()).ToList(),
         Shapes = views.Select(view => view.Canvas.Children.OfType<ShapeElement>().Select(shape => new ShapeData
         {

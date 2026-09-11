@@ -128,7 +128,7 @@ public partial class AccessWindow : Window
             var text = await session.ReadPatientAsync();
             if (closed) return;
             MaterialBox.Text = text;
-            NotesBox.Text = $"患者情報8項目を取得しました（{DateTime.Now:HH:mm:ss}）。";
+            NotesBox.Text = $"患者情報9項目を取得しました（{DateTime.Now:HH:mm:ss}）。";
         }
         catch (Exception ex)
         {

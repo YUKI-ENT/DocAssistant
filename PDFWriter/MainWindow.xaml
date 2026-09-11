@@ -41,7 +41,37 @@
 <StackPanel><TextBlock Text="図形の線種" Style="{StaticResource Label}"/><ComboBox x:Name="DashBox" Width="82" SelectionChanged="LineStyleChanged"><ComboBoxItem Content="実線"/><ComboBoxItem Content="点線"/></ComboBox></StackPanel>
 <StackPanel Margin="8,0,14,0"><TextBlock Text="表示倍率" Style="{StaticResource Label}"/><DockPanel><TextBlock x:Name="ZoomLabel" Text="100%" Width="40" VerticalAlignment="Center"/><Slider x:Name="Zoom" Minimum=".5" Maximum="2" Value="1" Width="100" VerticalAlignment="Center" ValueChanged="ZoomChanged"/></DockPanel></StackPanel>
 </WrapPanel></Border>
-<Grid><ScrollViewer x:Name="DocumentScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" ScrollChanged="DocumentScrolled"><StackPanel x:Name="Pages" HorizontalAlignment="Center" Margin="28,8,28,30"><StackPanel.LayoutTransform><ScaleTransform x:Name="PageScale"/></StackPanel.LayoutTransform></StackPanel></ScrollViewer>
+<Grid>
+<Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="240"/><ColumnDefinition Width="6"/><ColumnDefinition x:Name="ChartColumn" Width="380" MinWidth="280"/></Grid.ColumnDefinitions>
+<GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="#CCD7E3" Cursor="SizeWE" ToolTip="ドラッグしてカルテ情報の幅を調整"/>
+<Border Grid.Column="2" Background="#EEF2F6" Padding="14">
+<Border.Resources><Style x:Key="ChartCard" TargetType="Border"><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#DCE3EB"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="14"/><Setter Property="Margin" Value="0,0,0,12"/></Style></Border.Resources>
+<DockPanel>
+<StackPanel DockPanel.Dock="Top">
+<DockPanel><Button x:Name="ChartRefreshButton" DockPanel.Dock="Right" Content="再取得" Click="RefreshChart" Padding="10,5"/><TextBlock Text="カルテ情報" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
+<TextBlock x:Name="ChartStatus" Foreground="#087F8C" TextWrapping="Wrap" Margin="0,10,0,12"/>
+</StackPanel>
+<TextBlock DockPanel.Dock="Bottom" Text="文字を選択 → PDFへドラッグして挿入。Ctrl+Cでコピー。" Foreground="#7D8A9D" FontSize="11" TextWrapping="Wrap"/>
+<ScrollViewer x:Name="MedicationScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+<StackPanel>
+<Border Style="{StaticResource ChartCard}" Background="#F8FAFD"><StackPanel>
+<TextBlock Text="患者基本情報" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,10"/>
+<Grid x:Name="PatientFieldsGrid"/>
+<TextBlock x:Name="ChartPlaceholder" Text="Accessで患者を表示すると、ここに情報が表示されます。" Foreground="#8A98A9" TextWrapping="Wrap"/>
+</StackPanel></Border>
+<Border Style="{StaticResource ChartCard}" Background="#F8FAFD"><StackPanel>
+<TextBlock Text="当日所見" FontWeight="SemiBold" FontSize="15"/>
+<TextBlock x:Name="ChartDraftStatus" Foreground="#7D8A9D" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8"/>
+<RichTextBox x:Name="ChartDraft" MaxHeight="180" MinHeight="50" IsReadOnly="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Padding="0" FontSize="14"/>
+</StackPanel></Border>
+<Border Background="Transparent" Padding="0,6,0,0"><StackPanel>
+<TextBlock Text="受診履歴" Foreground="#33465C" FontWeight="SemiBold" FontSize="15" Margin="2,0,0,10"/>
+<TextBlock x:Name="ChartNotesStatus" Foreground="#7D8A9D" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+<StackPanel x:Name="MedicationDays"/>
+</StackPanel></Border>
+</StackPanel></ScrollViewer>
+</DockPanel></Border>
+<ScrollViewer x:Name="DocumentScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" ScrollChanged="DocumentScrolled"><StackPanel x:Name="Pages" HorizontalAlignment="Center" Margin="28,8,28,30"><StackPanel.LayoutTransform><ScaleTransform x:Name="PageScale"/></StackPanel.LayoutTransform></StackPanel></ScrollViewer>
 <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="PDF + あなたの書き込み" FontSize="27" FontWeight="Light" HorizontalAlignment="Center"/><TextBlock Text="テンプレートを選ぶか、PDFを開いて始めましょう。" Foreground="#7D8A9D" Margin="0,16,0,24"/><Button Content="PDFを開く" Click="OpenPdf" Style="{StaticResource Primary}" HorizontalAlignment="Center"/></StackPanel>
 </Grid>
 </DockPanel></Window>
