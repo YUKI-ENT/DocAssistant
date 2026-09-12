@@ -1,12 +1,12 @@
 namespace PDFWriter;
 
-internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null);
+internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null);
 
 internal sealed partial class AccessSession
 {
     internal bool MonitorTimedOut => timedOut;
 
-    public Task<AccessPatientDisplay> PollPatientAsync(bool forceNotes = false) => RunAsync(() =>
+    public Task<AccessPatientDisplay> PollPatientAsync(bool forceNotes = false, bool medication = false, bool procedures = false, bool firstVisit = false) => RunAsync(() =>
     {
         if (!IsAccessInstalled()) return new AccessPatientDisplay(false, "Accessがインストールされていません。");
         object? running = null;
@@ -16,15 +16,24 @@ internal sealed partial class AccessSession
             running = GetRunningAccess();
             if (running == null) return new AccessPatientDisplay(false, "電子カルテの起動を待っています。");
             var path = GetDatabasePath(running);
-            var result = ReadAutomaticPatient(running, (controls, id) => ReadCachedNotes(controls, id, path, forceNotes));
+            DateTime? firstDate = null;
+            var result = ReadAutomaticPatient(running, (controls, id) =>
+            {
+                if (firstVisit) firstDate = ReadFirstVisit(running, id);
+                return ReadCachedNotes(controls, id, path, forceNotes);
+            },
+                medication || procedures ? id => (
+                    medication ? ReadMedicationHistory(running, id) : null,
+                    procedures ? ReadMedicationHistory(running, id, true) : null) : null);
             if (!result.Detected || string.IsNullOrEmpty(result.Text)) { cachedNotes = null; cachedMedication = null; }
             VerifyDatabase(running, path);
-            return result;
+            return result with { FirstVisit = firstDate };
         }
         finally { Release(running); }
     });
 
-    internal static AccessPatientDisplay ReadAutomaticPatient(object app, Func<object, string, AccessNotes>? readNotes = null)
+    internal static AccessPatientDisplay ReadAutomaticPatient(object app, Func<object, string, AccessNotes>? readNotes = null,
+        Func<string, (MedicationHistory? Medication, MedicationHistory? Procedures)>? readHistory = null)
     {
         object? project = null, allForms = null, forms = null, form = null, controls = null;
         try
@@ -68,9 +77,23 @@ internal sealed partial class AccessSession
                 // Keep verified demographics usable even if the subform is unavailable.
                 notes = new($"診療記録を取得できません。受診カルテサブを確認してください。（0x{ex.HResult:X8}）");
             }
+            CurrentMedication ReadToday(string subform, string nameField, bool hasOrder = true)
+            {
+                try { return ReadCurrentMedication(controls, id, subform, nameField, hasOrder); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    return new("", $"取得できません。{subform}を確認してください。（0x{ex.HResult:X8}）");
+                }
+            }
+            var todayMedication = ReadToday("受診投薬サブフォーム", "薬名");
+            var todayTests = ReadToday("受診検査サブフォーム", "検査項目名");
+            var todayProcedures = ReadToday("受診処置手術サブフォーム", "行為名");
+            var todayBasic = ReadToday("受診基本診療サブフォーム", "基本診療項目", false);
+            var todayInjections = ReadToday("受診注射サブフォーム", "薬名");
+            var history = readHistory?.Invoke(id) ?? (null, null);
             if (ReadControlValue(controls, "カルテ番号") != id)
                 throw new InvalidOperationException("取得中に患者が切り替わりました。もう一度取得してください。");
-            return new(true, "電子カルテあり · 表示中の患者に追従しています。", patient, notes.Text, notes.Status, notes.Instructions, draft.Text, draft.Status, null, notes);
+            return new(true, "電子カルテあり · 表示中の患者に追従しています。", patient, notes.Text, notes.Status, notes.Instructions, draft.Text, draft.Status, history.Item1, notes, todayMedication, todayTests, todayProcedures, todayInjections, todayBasic, history.Item2, draft);
         }
         finally { Release(controls); Release(form); Release(forms); Release(allForms); Release(project); }
     }

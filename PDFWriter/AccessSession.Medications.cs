@@ -3,7 +3,7 @@ using System.Text;
 
 namespace PDFWriter;
 
-internal sealed record MedicationDay(string Key, string Header, string Text, string Notes = "", string Instructions = "");
+internal sealed record MedicationDay(string Key, string Header, string Text, string Notes = "", string Instructions = "", IReadOnlyList<MedicationRow>? Rows = null);
 internal sealed record MedicationHistory(string PatientKey, string Status, IReadOnlyList<MedicationDay> Days);
 internal sealed record MedicationRow(DateTime? Date, string Visit, long Number, decimal Order, string Name, string Quantity);
 
@@ -42,9 +42,10 @@ internal sealed partial class AccessSession
             $"AND (V.[カルテ番号] Is Null OR (V.[カルテ番号] >= {from} AND V.[カルテ番号] < {to})) " +
             "ORDER BY V.[受診日] DESC, M.[受診コード], M.[順番], M.[カルテ番号];";
     }
-    internal static MedicationHistory ReadMedicationHistory(object app, string id)
+    internal static MedicationHistory ReadMedicationHistory(object app, string id, bool procedures = false)
     {
         var sql = MedicationSql(id);
+        if (procedures) sql = sql.Replace("[受診投薬]", "[受診処置手術]").Replace("M.[薬名]", "M.[行為名] AS [薬名]");
         object? database = null, records = null;
         try
         {
@@ -132,7 +133,7 @@ internal sealed partial class AccessSession
                 text.Append($"受診 {visit.Key.Visit} · カルテ番号 {visit.Key.Number / 10}-{visit.Key.Number % 10}\r\n");
                 foreach (var row in visit.OrderBy(r => r.Order)) text.Append($"{row.Name}　数量：{row.Quantity}\r\n");
             }
-            days.Add(new(key, $"{key}（{group.Count()}件）", text.ToString().TrimEnd('\r', '\n')));
+            days.Add(new(key, $"{key}（{group.Count()}件）", text.ToString().TrimEnd('\r', '\n'), Rows: group.ToArray()));
         }
         return new((number / 10).ToString(CultureInfo.InvariantCulture),
             rows.Count == 0 ? "薬歴はありません。" : $"{days.Count}日分 / {rows.Count}件 · 全枝番", days);

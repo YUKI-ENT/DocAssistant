@@ -26,6 +26,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         EnableChartDrag(ChartDraft);
+        EnableChartDrag(ChartTodayBasic);
+        EnableChartDrag(ChartTodayMedication);
+        EnableChartDrag(ChartTodayTests);
+        EnableChartDrag(ChartTodayProcedures);
+        EnableChartDrag(ChartTodayInjections);
         FontFamilyBox.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(s => s).ToList();
         FontFamilyBox.SelectedItem = "Yu Gothic";
         FontSizeBox.ItemsSource = new double[] { 8, 10, 12, 14, 16, 18, 20, 24, 32, 48 };
@@ -40,6 +45,7 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         Loaded += async (_, _) =>
         {
+            if (args.Contains("--llm-test")) { InitializeLlm(); await TestLlmAsync(); return; }
             if (args.Contains("--smoke") || args.Contains("--editor-test")) { await Smoke(); return; }
             if (args.Contains("--close-test"))
             {
@@ -54,6 +60,7 @@ public partial class MainWindow : Window
                 try { settings = AppSettings.Load(); }
                 catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
                 { MessageBox.Show(this, "設定を読み込めなかったため、既定値で起動します。\n" + ex.Message, "設定"); }
+                InitializeLlm();
                 RefreshTemplates();
                 var startup = TemplateBox.Items.OfType<TemplateItem>().FirstOrDefault(t => t.Path == settings.DefaultTemplate);
                 if (startup != null)
@@ -81,6 +88,8 @@ public partial class MainWindow : Window
     {
         typingTimer.Stop();
         StopChartMonitor();
+        llmCancellation?.Cancel();
+        llmClient.Dispose();
         LifecycleLog.Write("Window.Closed");
         base.OnClosed(e);
     }

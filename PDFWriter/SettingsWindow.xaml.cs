@@ -63,6 +63,7 @@ public partial class SettingsWindow : Window
             var updated = new AppSettings { SaveFolder = Path.GetFullPath(SaveFolder.Text), TemplateFolder = TemplateFolder.Text.Trim(), TemplateFiles = registered.Select(t => t.Path).ToList(), DefaultTemplate = (StartupTemplate.SelectedItem as TemplateItem)?.Path ?? "" };
             updated.AccessDatabasePath = Result.AccessDatabasePath;
             updated.AccessFormName = Result.AccessFormName;
+            updated.Llm = Result.Llm;
             updated.Save(); Result = updated; DialogResult = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)

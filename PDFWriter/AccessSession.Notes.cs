@@ -3,7 +3,7 @@ using System.Text;
 
 namespace PDFWriter;
 
-internal sealed record AccessNotes(string Status, string Text = "", string Instructions = "", IReadOnlyList<AccessNote>? Notes = null, IReadOnlyList<AccessNote>? Orders = null);
+internal sealed record AccessNotes(string Status, string Text = "", string Instructions = "", IReadOnlyList<AccessNote>? Notes = null, IReadOnlyList<AccessNote>? Orders = null, IReadOnlyList<string>? Visits = null);
 internal sealed record AccessNote(DateTime? Date, string Visit, long ChartNumber, decimal Order, string Text);
 
 internal sealed partial class AccessSession
@@ -63,6 +63,7 @@ internal sealed partial class AccessSession
     internal static AccessNotes ReadNoteRecords(object records, long chartNumber, bool draft = false)
     {
         var notes = new List<AccessNote>();
+        var visits = new HashSet<string>(StringComparer.Ordinal);
         var instructions = new List<AccessNote>();
         bool limited = false;
         object? fields = null;
@@ -113,6 +114,8 @@ internal sealed partial class AccessSession
                     if (rowNumber / 10 != chartNumber / 10)
                         throw new InvalidOperationException("診療記録の患者が表示中の患者と一致しません。");
                     string body = Convert.ToString(Read("症状")) ?? "";
+                    if (draft && !string.IsNullOrWhiteSpace(Convert.ToString(Read("受診コード"))))
+                        visits.Add(Convert.ToString(Read("受診コード"))!);
                     string instruction = draft ? "" : Convert.ToString(Read("指示欄")) ?? "";
                     if (!string.IsNullOrWhiteSpace(body) || !string.IsNullOrWhiteSpace(instruction))
                     {
@@ -132,7 +135,7 @@ internal sealed partial class AccessSession
         return new(limited ? "表示範囲の末尾5,000行から取得（上限に達しました）。" :
             draft ? (notes.Count == 0 ? "当日所見はありません。" : $"{notes.Count}件の当日所見") :
             notes.Count == 0 && instructions.Count == 0 ? "表示範囲に症状・指示の記載はありません。" : $"{notes.Count}件の症状 / {instructions.Count}件の投薬・処置（保存済み）",
-            FormatNotes(notes, showDate: !draft, showIdentity: !draft), FormatNotes(instructions), notes, instructions);
+            FormatNotes(notes, showDate: !draft, showIdentity: !draft), FormatNotes(instructions), notes, instructions, visits.ToArray());
     }
     internal static string FormatNotes(IEnumerable<AccessNote> notes, bool showDate = true, bool showIdentity = true)
     {

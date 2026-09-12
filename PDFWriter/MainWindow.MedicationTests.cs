@@ -28,6 +28,72 @@ public partial class MainWindow
             ["受診日"] = date, ["受診コード"] = "200", ["カルテ番号"] = number,
             ["順番"] = order, ["薬名"] = name, ["数量"] = quantity, ["受診患者番号"] = number
         };
+        var currentRecords = new FakeNoteRecords(
+            Row(null, 1234, 2, "当日薬B", 0), Row(null, 1234, 1, "当日薬A", 1.5m),
+            new Dictionary<string, object?>(Row(null, 1234, 0, "過去薬", 1)) { ["受診コード"] = "199" });
+        var currentControls = new FakeCurrentMedicationControls(currentRecords);
+        var current = AccessSession.ReadCurrentMedication(currentControls, "1234");
+        Check(currentRecords.Closed && !current.Text.Contains("過去薬") && current.Text.IndexOf("当日薬A") < current.Text.IndexOf("当日薬B"),
+            "Current subform visit only, sorted, clone closed");
+        Check(current.Text.Contains("当日薬B　0") && current.Text.Contains("当日薬A　1.5") && !current.Text.Contains("数量：") && !current.Text.Contains("受診 200"), "Current medication preserves quantities without identity headers");
+        Check(AccessSession.ReadCurrentMedicationRecords(new FakeNoteRecords(), 1234, "200").Text == "", "Empty current visit clears medications");
+        try
+        {
+            AccessSession.ReadCurrentMedicationRecords(new FakeNoteRecords(Row(null, 1235, 1, "別枝", 1)), 1234, "200");
+            throw new Exception("Expected exact patient rejection");
+        }
+        catch (InvalidOperationException) { }
+        var switchingRecords = new FakeNoteRecords(Row(null, 1234, 1, "当日薬", 1));
+        try
+        {
+            AccessSession.ReadCurrentMedication(new FakeCurrentMedicationControls(switchingRecords, true), "1234");
+            throw new Exception("Expected visit switch rejection");
+        }
+        catch (InvalidOperationException) { Check(switchingRecords.Closed, "Close clone after visit switch"); }
+        ShowChart(new(true, "", TodayMedication: current));
+        Check((string?)ChartTodayMedication.Tag == current.Text, "Today's medication shown in its own panel");
+        ShowChart(new(false, ""));
+        Check((string?)ChartTodayMedication.Tag == "", "Disconnect clears today's medication");
+        foreach (var nameField in new[] { "薬名", "検査項目名", "行為名" })
+        {
+            Dictionary<string, object?> ClinicalRow(string visit, int order, string name) => new()
+            {
+                ["受診コード"] = visit, ["カルテ番号"] = 1234, ["順番"] = order,
+                [nameField] = name, ["数量"] = 1
+            };
+            var rows = new FakeNoteRecords(ClinicalRow("199", 1, "過去の項目"), ClinicalRow("200", 2, "項目B"), ClinicalRow("200", 1, "項目A"));
+            var section = AccessSession.ReadCurrentMedicationRecords(rows, 1234, "200", nameField);
+            Check(!section.Text.Contains("過去") && section.Text.IndexOf("項目A") < section.Text.IndexOf("項目B"), "Filter and sort each clinical name field: " + nameField);
+        }
+        var todayDisplay = new AccessPatientDisplay(true, "", Text: "患者A", TodayMedication: current with { Visit = "200" },
+            TodayTests: new("検査A　1", Visit: "200"), TodayProcedures: new("", "データなし", "200"),
+            TodayInjections: new("注射A　1", Visit: "200"));
+        ShowChart(todayDisplay);
+        Check(TodayMedicationExpander.IsEnabled && TodayTestsExpander.IsEnabled && TodayInjectionsExpander.IsEnabled && !TodayProceduresExpander.IsEnabled,
+            "Only sections containing data can expand");
+        Check(!TodayMedicationExpander.IsExpanded && !TodayTestsExpander.IsExpanded, "Sections initially collapse");
+        TodayTestsExpander.IsExpanded = true;
+        ShowChart(todayDisplay);
+        Check(TodayTestsExpander.IsExpanded, "Polling preserves expansion");
+        ShowChart(todayDisplay with { TodayTests = new("別受診の検査", Visit: "201") });
+        Check(!TodayTestsExpander.IsExpanded, "Visit changes collapse section");
+        ShowChart(new(false, ""));
+        Check(!TodayTestsExpander.IsEnabled && !TodayInjectionsExpander.IsEnabled && (string?)ChartTodayInjections.Tag == "", "Disconnect clears all sections");
+        var basicRows = new FakeNoteRecords(
+            new() { ["受診コード"] = "199", ["カルテ番号"] = 1234, ["基本診療項目"] = "過去診療", ["数量"] = 1 },
+            new() { ["受診コード"] = "200", ["カルテ番号"] = 1234, ["基本診療項目"] = "基本診療A", ["数量"] = 1 });
+        var basic = AccessSession.ReadCurrentMedicationRecords(basicRows, 1234, "200", "基本診療項目", false);
+        Check(basic.Text == "基本診療A　1", "Basic care supports records without order field and excludes other visits");
+        ShowChart(new(true, "", TodayBasic: basic));
+        Check(TodayBasicExpander.IsEnabled && !TodayBasicExpander.IsExpanded, "Basic care starts collapsed with data");
+        ShowChart(new(false, ""));
+        Check(!TodayBasicExpander.IsEnabled && (string?)ChartTodayBasic.Tag == "", "Basic care clears on disconnect");
+        var unitRows = new FakeNoteRecords(
+            new Dictionary<string, object?>(Row(null, 1234, 1, "単位確認薬", 1.5m)) { ["区分"] = "錠" },
+            new Dictionary<string, object?>(Row(null, 1234, 2, "単位未登録薬", 0)) { ["区分"] = DBNull.Value });
+        var withUnits = AccessSession.ReadCurrentMedication(new FakeCurrentMedicationControls(unitRows), "1234");
+        Check(withUnits.Text.Contains("単位確認薬　1.5錠") && withUnits.Text.Contains("単位未登録薬　0") && !withUnits.Text.Contains("数量：") && unitRows.Closed,
+            "Medication reads unit from kubun and preserves null units and quantities");
         var today = new DateTime(2026, 9, 10);
         var records = new FakeNoteRecords(
             Row(today, 1230, 2, "確認薬B（架空）", 1.5m),
@@ -75,3 +141,22 @@ public partial class MainWindow
     }
 }
 
+
+public sealed class FakeCurrentMedicationControls(FakeNoteRecords records, bool changing = false)
+{
+    public FakeCurrentMedicationSub this[string name] => name == "受診投薬サブフォーム" ? new(records, changing) : throw new MissingMemberException(name);
+}
+public sealed class FakeCurrentMedicationSub(FakeNoteRecords records, bool changing)
+{
+    public FakeCurrentMedicationForm Form { get; } = new(records, changing);
+}
+public sealed class FakeCurrentMedicationForm(FakeNoteRecords records, bool changing)
+{
+    public FakeCurrentVisitControls Controls { get; } = new(changing);
+    public FakeNoteRecords RecordsetClone => records;
+}
+public sealed class FakeCurrentVisitControls(bool changing)
+{
+    private int reads;
+    public FakePatientValue this[string name] => new(changing && ++reads > 1 ? "201" : "200");
+}

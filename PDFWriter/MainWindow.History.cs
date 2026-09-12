@@ -107,6 +107,8 @@ public partial class MainWindow
     private void RedoClick(object sender, RoutedEventArgs e) => Redo();
     private void EditorKeyDown(object sender, KeyEventArgs e)
     {
+        if (LlmPane.IsKeyboardFocusWithin) return;
+        if (WorkspaceTabs.SelectedIndex != 0) return;
         if (busy) return;
         if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {

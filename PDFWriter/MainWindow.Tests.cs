@@ -61,6 +61,15 @@ public partial class MainWindow
             Check(dropped.Text == "山田 太郎\r\nドラッグ挿入の確認" && InkCanvas.GetLeft(dropped) == 100 &&
                 InkCanvas.GetTop(dropped) > 150 && InkCanvas.GetTop(dropped) <= 200, "Chart drop inserts multiline text at page coordinates");
             Check(Capture().Pages[0].Single().Text == dropped.Text && dirty, "Dropped text is included in saved annotations");
+            var tabSnapshot = Snapshot();
+            WorkspaceTabs.SelectedIndex = 1; UpdateLayout();
+            Check(!DocumentScroll.IsVisible && ChartRefreshButton.IsVisible, "Referral tab hides PDF tools and keeps shared chart visible");
+            RenderVisual((FrameworkElement)Content, Path.Combine(folder, "referral-tab.png"), 1300, 880);
+            WorkspaceTabs.SelectedIndex = 2; UpdateLayout();
+            Check(Snapshot() == tabSnapshot, "Certificate tab preserves PDF annotations");
+            WorkspaceTabs.SelectedIndex = 0; UpdateLayout();
+            Check(ReferenceEquals(dropped, first.Children.OfType<TextBox>().Single()) && Snapshot() == tabSnapshot,
+                "Returning to PDF tab reuses the existing editor and annotations");
             Undo();
             Check(Snapshot() == beforeDrop, "One undo removes chart insertion");
             Redo();

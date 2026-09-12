@@ -15,6 +15,7 @@ public sealed class AppSettings
     public string DefaultTemplate { get; set; } = "";
     public string AccessDatabasePath { get; set; } = "";
     public string AccessFormName { get; set; } = "患者マスター";
+    public LlmSettings Llm { get; set; } = new();
     private static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)

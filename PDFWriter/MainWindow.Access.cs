@@ -52,10 +52,16 @@ public partial class MainWindow
     }
     private void ShowChart(AccessPatientDisplay display)
     {
+        TrackLlmPatient(display);
         ChartStatus.Text = display.Status;
         ShowMedicationHistory(BuildVisitHistory(display));
         ChartDraftStatus.Text = display.DraftStatus;
         SetClinicalText(ChartDraft, display.DraftText);
+        ShowTodaySection(TodayBasicExpander, ChartTodayBasic, ChartTodayBasicStatus, display.TodayBasic, display.Text);
+        ShowTodaySection(TodayMedicationExpander, ChartTodayMedication, ChartTodayMedicationStatus, display.TodayMedication, display.Text);
+        ShowTodaySection(TodayTestsExpander, ChartTodayTests, ChartTodayTestsStatus, display.TodayTests, display.Text);
+        ShowTodaySection(TodayProceduresExpander, ChartTodayProcedures, ChartTodayProceduresStatus, display.TodayProcedures, display.Text);
+        ShowTodaySection(TodayInjectionsExpander, ChartTodayInjections, ChartTodayInjectionsStatus, display.TodayInjections, display.Text);
         ChartNotesStatus.Text = display.NotesStatus;
         ChartNotesStatus.Visibility = display.NotesStatus.Contains("取得できません") || display.NotesStatus.Contains("上限")
             ? Visibility.Visible : Visibility.Collapsed;
@@ -67,6 +73,20 @@ public partial class MainWindow
         }
         ChartPlaceholder.Visibility = string.IsNullOrEmpty(display.Text) ? Visibility.Visible : Visibility.Collapsed;
     }
+    private static void ShowTodaySection(System.Windows.Controls.Expander expander, System.Windows.Controls.RichTextBox box,
+        System.Windows.Controls.TextBlock status, CurrentMedication? data, string patient)
+    {
+        string key = patient + "|" + data?.Visit;
+        bool hasData = !string.IsNullOrWhiteSpace(data?.Text);
+        if (!Equals(expander.Tag, key) || !hasData) expander.IsExpanded = false;
+        expander.Tag = key;
+        expander.IsEnabled = hasData;
+        SetClinicalText(box, data?.Text ?? "");
+        status.Text = data?.Status ?? "";
+        status.Visibility = string.IsNullOrEmpty(status.Text) || status.Text == "データなし" ? Visibility.Collapsed : Visibility.Visible;
+        expander.ToolTip = hasData ? "クリックして展開" : string.IsNullOrEmpty(status.Text) ? "データなし" : status.Text;
+    }
+
     private string shownPatientText = "";
 
     private void ShowPatientFields(string text)
