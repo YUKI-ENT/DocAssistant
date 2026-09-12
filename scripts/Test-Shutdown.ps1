@@ -3,9 +3,9 @@ $ErrorActionPreference = 'Stop'
 $workspace = Split-Path $PSScriptRoot -Parent
 Push-Location $workspace
 try {
-    dotnet build PDFWriter.sln -c $Configuration
+    dotnet build DocAssistant.sln -c $Configuration
     if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
-    $exe = Join-Path $workspace "PDFWriter/bin/$Configuration/PDFWriter.exe"
+    $exe = Join-Path $workspace "DocAssistant/bin/$Configuration/DocAssistant.exe"
     $cases = @('--close-test', '--close-test --with-pdf', '--close-test --extra-window', '--close-test --while-busy', '--smoke', '--smoke', '--smoke', '--smoke', '--smoke')
     foreach ($case in $cases) {
         $process = Start-Process -FilePath $exe -ArgumentList $case -WorkingDirectory $workspace -WindowStyle Hidden -PassThru

@@ -1,6 +1,18 @@
-# PDFWriter
+# DocAssistant
 
-C# / WPF / .NET 10 のWindowsアプリです。Visual Studioで **PDFWriter.sln** を開き、F5で実行します。
+現在のリリース：**ver20260912**。
+
+## バージョン管理
+
+`Directory.Build.props` の `ReleaseDate` を `YYYYMMDD` 形式で設定し、`scripts/Publish-SingleFile.bat` を実行します。
+画面のアプリ名・タイトルとEXEの製品バージョンに `ver20260912` の形式で反映されます。
+Windows/.NET用の数値バージョンは `2026.9.12.0` です。ビルド日では自動更新せず、リリース日を明示して管理します。
+編集データ内部のVersionは保存形式の番号であり、アプリのバージョンとは別です。
+
+Visual Studioでは `DocAssistant.sln`（または `DocAssistant.slnx`）を開いてください。
+設定・ログの保存先は `%LOCALAPPDATA%/DocAssistant`、配布先は `publish/DocAssistant/DocAssistant.exe` です。
+
+C# / WPF / .NET 10 のWindowsアプリです。Visual Studioで **DocAssistant.sln** を開き、F5で実行します。
 
 ## 基本操作
 
@@ -35,7 +47,7 @@ C# / WPF / .NET 10 のWindowsアプリです。Visual Studioで **PDFWriter.sln*
 - 起動時テンプレート：「表示しない」または登録済みPDFを選択。
 
 PDF本体は移動・コピーしません。登録ファイルを移動した場合は再登録してください。
-設定は %LOCALAPPDATA%/PDFWriter/settings.json に保存します。
+設定は %LOCALAPPDATA%/DocAssistant/settings.json に保存します。
 初回はソリューションのあるフォルダをテンプレートフォルダとして使います。
 
 ## 右列のカルテ情報（自動表示）
@@ -92,7 +104,7 @@ PDF描画には [PDFtoImage](https://github.com/sungaila/PDFtoImage)（PDFium / 
 ## 開発確認
 
 ~~~powershell
-dotnet build PDFWriter.sln
+dotnet build DocAssistant.sln
 ./scripts/Test-Shutdown.ps1
 ~~~
 
@@ -106,33 +118,48 @@ tmp/smoke に結果と画面・印刷用のPNGを出力します。記入デー�
 
 Windows.Data.Pdfの終了時にIntel igd10um64xe.DLLで停止する問題を再現したため、
 PDFiumのCPUビットマップ描画へ切り替えています。
-終了ログは %LOCALAPPDATA%/PDFWriter/Logs/lifecycle-<PID>.log です。
+終了ログは %LOCALAPPDATA%/DocAssistant/Logs/lifecycle-<PID>.log です。
 起動・終了段階のみ記録し、PDF名や入力内容は記録しません。
 
 ## 32bit Access用ビルド
 
-Visual Studioでは PDFWriter.sln を開き、構成を Release / x86 にしてビルドしてください。
+Visual Studioでは DocAssistant.sln を開き、構成を Release / x86 にしてビルドしてください。
 x86構成は PlatformTarget=x86、RuntimeIdentifier=win-x86 です。
 Windows-x86 発行プロファイルは .NET ランタイム・PDF描画ライブラリを含む単一EXE形式です。
 
 ```powershell
-dotnet publish PDFWriter/PDFWriter.csproj -p:PublishProfile=Windows-x86 -p:Platform=x86
+dotnet publish DocAssistant/DocAssistant.csproj -p:PublishProfile=Windows-x86 -p:Platform=x86
 ```
 
-発行先はルートの publish/PDFWriter。配布時は PDFWriter.exe だけをコピーしてください。
+発行先はルートの publish/DocAssistant。配布時は DocAssistant.exe だけをコピーしてください。
 フォームの読み込みはAccess COM経由です。Jet/ACE OLE DBへの直接接続は使用しません。
 Access側で使うJet 4.0やリンクテーブルの設定は変更しません。
 接続先MDBのパスを照合し、別のMDBなら読み込みを拒否します。
 複数のAccessを開いていると対象を取得できないことがあるため、まず対象MDBだけを開いて接続してください。
-エラー欄には失敗した処理名、HRESULT、PDFWriterの実行ビット数を表示します。
+エラー欄には失敗した処理名、HRESULT、DocAssistantの実行ビット数を表示します。
+
+## スクリプトで単一EXEを作成
+
+.NET 10 SDKをインストールしたWindowsで、リポジトリのルートから実行します。
+
+```powershell
+.\scripts\Publish-SingleFile.bat
+```
+
+PowerShellの実行ポリシー変更は不要です。バッチファイルから直接dotnetを実行します。
+Release / win-x86で発行し、`publish/DocAssistant/DocAssistant.exe` を更新します。
+.NETランタイムとネイティブライブラリを含みます。PDFテンプレート・MDB・編集データは別途用意します。
+
+AIアシスタントの検査・注射の履歴は、それぞれ `受診検査`（`検査項目名`）・`受診注射`（`薬名`）を `受診` と結合して取得します。
+既存の投薬・処置と同様に、カルテ番号・受診コード・順番・数量が必要です。対象期間と当日表示の優先規則も共通です。
 
 ## 出力フォルダ
 
 構成は Debug / Release、プラットフォームは x86 のみです。
-通常のビルド・F5は `PDFWriter/bin/Debug`、Releaseビルドは `PDFWriter/bin/Release` に出力します。
+通常のビルド・F5は `DocAssistant/bin/Debug`、Releaseビルドは `DocAssistant/bin/Release` に出力します。
 どちらも32bitランタイムを含みます。フレームワーク名・x86・win-x86の追加階層は作りません。
-配布用は Windows-x86 プロファイルで発行し、ルートの `publish/PDFWriter/PDFWriter.exe` を使用してください。
-他端末へは `publish/PDFWriter/PDFWriter.exe` だけをコピーしてください。通常のビルドだけでは配布版は更新されません。
+配布用は Windows-x86 プロファイルで発行し、ルートの `publish/DocAssistant/DocAssistant.exe` を使用してください。
+他端末へは `publish/DocAssistant/DocAssistant.exe` だけをコピーしてください。通常のビルドだけでは配布版は更新されません。
 旧出力は `tmp/output-backup-*` に退避しています。
 
 単一EXEは起動時に必要な実行ファイルをユーザーの一時領域へ展開します（初回起動は時間がかかる場合があります）。PDFテンプレート・MDB・編集データは別途用意します。Access COMの実機接続は配布先でも確認してください。
@@ -157,15 +184,15 @@ Access COMのCurrentDbから受診投薬と受診を結ぶ読み取り専用SQL�
 2. アドレスとポートを入力します。例：Ollamaは `http://localhost` / `11434`、LM Studioは `http://localhost` / `1234`。アドレスには `/v1` を含めても省略しても構いません。
 3. 「モデル取得」でモデルを選択します。最後に生成に成功したモデルを保存し、次回起動時とモデル一覧取得時の既定にします。認証が必要なサーバーにはAPIキーを入力してください（ディスクには保存しません）。
 4. プロンプトを選択・編集します。名前と本文を「保存」で登録でき、「追加」「削除」で複数の定型文を管理できます。
-5. 所見・投薬・処置を個別に選択し、全項目共通の開始日を指定します。対象は開始日から今日までです。
+5. 所見・投薬・処置・検査・注射を個別に選択し、全項目共通の開始日を指定します。対象は開始日から今日までです。
 6. 「生成」で最新の保存済みデータを読み直し、設定した接続先へ送信します。結果はコピー、または選択してPDFへドラッグできます。
 
 APIは `GET /v1/models` と `POST /v1/chat/completions`（非ストリーミング）です。生成中もPDF編集が可能で、「中止」で通信をキャンセルできます。応答待ちは最大5分です。接続先へのHTTPリダイレクトには追従しません。
 
-所見はAccessの受診カルテサブに表示された保存済み記録（既存の最大5,000行）を使用します。投薬と処置はそれぞれ `受診投薬` と `受診処置手術` を `受診` と結合し、表示患者の全枝番を読み取り専用で取得します。処置には `行為名`、その他に既存薬歴と同様の受診コード・カルテ番号・順番・数量を必要とします。実際のデータベースに対応テーブルやフィールドがない場合は送信せずエラーを表示します。開始日から今日まで両端を含みます。当日の日付・受診コードが一致する受診は、履歴本文の長さや確定状態によらず、当日表示の所見・投薬・処置を優先します。同じ受診の保存済みデータは空でない当日表示に置き換えます。当日表示が正常に取得できて空の場合は保存済み履歴を保持します。別受診のデータも保持します。出典にも当日表示を優先した旨を付記します。当日データの取得失敗時は送信を止めます。日付が確認できない受診や、Accessのレコードにまだ反映されていない編集中の文字列は対象外です。過去の混在した指示欄を投薬や処置として推測分類することはありません。
+所見はAccessの受診カルテサブに表示された保存済み記録（既存の最大5,000行）を使用します。投薬と処置はそれぞれ `受診投薬` と `受診処置手術` を `受診` と結合し、表示患者の全枝番を読み取り専用で取得します。処置には `行為名`、その他に既存薬歴と同様の受診コード・カルテ番号・順番・数量を必要とします。実際のデータベースに対応テーブルやフィールドがない場合は送信せずエラーを表示します。開始日から今日まで両端を含みます。当日の日付・受診コードが一致する受診は、履歴本文の長さや確定状態によらず、当日表示の所見・投薬・処置・検査・注射を優先します。同じ受診の保存済みデータは空でない当日表示に置き換えます。当日表示が正常に取得できて空の場合は保存済み履歴を保持します。別受診のデータも保持します。出典にも当日表示を優先した旨を付記します。当日データの取得失敗時は送信を止めます。日付が確認できない受診や、Accessのレコードにまだ反映されていない編集中の文字列は対象外です。過去の混在した指示欄を投薬や処置として推測分類することはありません。
 
 送信本文は選んだ記録と期間・出典を含むJSONです。記録に含まれるカルテ番号なども指定先へ送信されます。患者表示が変わるか取得できなくなった場合、実行中の通信を中止し、前患者の生成結果をクリアします。プロンプトの編集中の内容はそのまま生成に使われ、再起動後も残すには「保存」が必要です。
 
-検証：`PDFWriter.exe --llm-test` で外部通信なしのAPIモック・期間フィルター・患者切り替え・設定保存形式と画面描画を検証します。結果は `tmp/llm-test/result.txt`、画面は `tmp/llm-test/window.png` に出力します。
+検証：`DocAssistant.exe --llm-test` で外部通信なしのAPIモック・期間フィルター・患者切り替え・設定保存形式と画面描画を検証します。結果は `tmp/llm-test/result.txt`、画面は `tmp/llm-test/window.png` に出力します。
 
 互換API仕様：[Ollama](https://docs.ollama.com/api/openai-compatibility)、[LM Studio](https://lmstudio.ai/docs/developer/openai-compat/chat-completions)。
