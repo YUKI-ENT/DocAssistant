@@ -57,6 +57,7 @@ public partial class MainWindow
     private void ShowChart(AccessPatientDisplay display)
     {
         TrackLlmPatient(display);
+        TrackReferralPatient(display);
         ChartStatus.Text = display.Status;
         ShowMedicationHistory(BuildVisitHistory(display));
         ChartDraftStatus.Text = display.DraftStatus;

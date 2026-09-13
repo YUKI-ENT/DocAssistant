@@ -12,6 +12,9 @@ internal static class AccessDispatch
     internal static object Call(object target, string name, params object[] args)
         => Invoke(target, name, BindingFlags.InvokeMethod | BindingFlags.OptionalParamBinding, args);
 
+    internal static void Set(object target, string name, object? value)
+        => Invoke(target, name, BindingFlags.SetProperty, [value!]);
+
     private static object Invoke(object target, string name, BindingFlags operation, object[] args)
     {
         try

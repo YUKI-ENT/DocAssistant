@@ -26,7 +26,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = $"DocAssistant {AppVersion.Display} — ハイブリッド記入";
-        AppName.Text = $"DocAssistant {AppVersion.Display}";
+        AppVersionLabel.Text = AppVersion.Display;
         EnableChartDrag(ChartDraft);
         EnableChartDrag(ChartTodayBasic);
         EnableChartDrag(ChartTodayMedication);
@@ -47,6 +47,8 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         Loaded += async (_, _) =>
         {
+            if (args.Contains("--referral-test")) { await TestReferrals(); return; }
+            if (args.Contains("--pdf-export-test")) { await TestPdfExport(); return; }
             if (args.Contains("--llm-test")) { InitializeLlm(); await TestLlmAsync(); return; }
             if (args.Contains("--smoke") || args.Contains("--editor-test")) { await Smoke(); return; }
             if (args.Contains("--close-test"))
@@ -82,8 +84,8 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         LifecycleLog.Write($"Window.Closing busy={busy} dirty={dirty} windows={Application.Current.Windows.Count}");
-        if (busy) { closeRequested = true; e.Cancel = true; Status.Text = "処理完了後に終了します。"; return; }
-        e.Cancel = !CanReplace();
+        if (busy || referralBusy) { closeRequested = true; e.Cancel = true; Status.Text = "処理完了後に終了します。"; return; }
+        e.Cancel = !CanReplace() || !CanDiscardReferral();
         LifecycleLog.Write(e.Cancel ? "Close cancelled by user" : "Close accepted");
     }
     protected override void OnClosed(EventArgs e)
@@ -265,22 +267,7 @@ public partial class MainWindow : Window
             var page = new FixedPage { Width = width, Height = height, Background = Brushes.White };
             var content = new Grid { Width = view.Width, Height = view.Height, Background = Brushes.White, ClipToBounds = true };
             content.Children.Add(new Image { Source = view.Background, Stretch = Stretch.Fill });
-            var overlay = new Canvas { Width = view.Width, Height = view.Height };
-            foreach (TextBox box in view.Canvas.Children.OfType<TextBox>())
-            {
-                var text = new TextBlock { Text = box.Text, Width = box.Width, Height = box.Height, FontFamily = box.FontFamily, FontSize = box.FontSize, Foreground = box.Foreground, TextWrapping = TextWrapping.Wrap, ClipToBounds = true, Padding = new Thickness(2) };
-                Canvas.SetLeft(text, InkCanvas.GetLeft(box)); Canvas.SetTop(text, InkCanvas.GetTop(box)); overlay.Children.Add(text);
-            }
-            if (PrintInk.IsChecked == true)
-            {
-                foreach (var shape in view.Canvas.Children.OfType<ShapeElement>())
-                {
-                    var copy = new ShapeElement(shape.Data) { Width = shape.Width, Height = shape.Height };
-                    Canvas.SetLeft(copy, InkCanvas.GetLeft(shape)); Canvas.SetTop(copy, InkCanvas.GetTop(shape)); overlay.Children.Add(copy);
-                }
-            }
-            content.Children.Add(overlay);
-            if (PrintInk.IsChecked == true) content.Children.Add(new InkPresenter { Width = view.Width, Height = view.Height, Strokes = view.Canvas.Strokes.Clone(), IsHitTestVisible = false });
+            content.Children.Add(BuildAnnotationVisual(view, PrintInk.IsChecked == true));
             var scale = Math.Min(page.Width / view.Width, page.Height / view.Height); content.LayoutTransform = new ScaleTransform(scale, scale);
             FixedPage.SetLeft(content, (page.Width - view.Width * scale) / 2); FixedPage.SetTop(content, (page.Height - view.Height * scale) / 2);
             page.Children.Add(content); var pageContent = new PageContent(); ((System.Windows.Markup.IAddChild)pageContent).AddChild(page); document.Pages.Add(pageContent);

@@ -1,0 +1,31 @@
+using System.Globalization;
+
+namespace DocAssistant;
+
+internal sealed record ReferralPatient(string DatabasePath, long ChartNumber, string Name)
+{
+    internal string Display => $"{Name}　カルテ番号 {ChartNumber / 10}-{ChartNumber % 10}";
+    internal bool SameIdentity(ReferralPatient? other) => other != null && ChartNumber == other.ChartNumber &&
+        string.Equals(DatabasePath, other.DatabasePath, StringComparison.OrdinalIgnoreCase);
+}
+
+internal sealed record ReferralLetter(long? Number, long ChartNumber, DateTime? Date,
+    string Destination1 = "", string Destination2 = "", string Doctor = "", string Diagnosis = "",
+    string Purpose = "", string Treatment = "", string Tests = "", string Remarks = "", string TestResults = "")
+{
+    internal ReferralLetter CopyFor(long patient, DateTime today) => this with { Number = null, ChartNumber = patient, Date = today.Date };
+    internal Dictionary<string, object?> Values() => new()
+    {
+        ["日付"] = Date, ["紹介先1"] = Destination1, ["紹介先2"] = Destination2, ["紹介先先生"] = Doctor,
+        ["傷病名"] = Diagnosis, ["紹介目的"] = Purpose, ["治療"] = Treatment, ["検査"] = Tests,
+        ["備考"] = Remarks, ["検査結果"] = TestResults
+    };
+}
+
+internal sealed record ReferralSuggestion(string Value, long Count)
+{
+    public override string ToString() => Value;
+}
+internal sealed record ReferralChoices(IReadOnlyList<ReferralSuggestion> Destinations1,
+    IReadOnlyList<ReferralSuggestion> Destinations2, IReadOnlyList<ReferralSuggestion> Doctors);
+internal sealed record ReferralHistory(IReadOnlyList<ReferralLetter> Letters, ReferralChoices? Choices, string ChoicesStatus);

@@ -40,12 +40,14 @@ internal sealed class LlmClient : IDisposable
         return json.RootElement.GetProperty("data").EnumerateArray().Select(m => m.GetProperty("id").GetString())
             .Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m!).Distinct().Order().ToArray();
     }
-    internal async Task<string> GenerateAsync(Uri endpoint, string key, string model, string prompt, string payload, CancellationToken token)
+    internal async Task<string> GenerateAsync(Uri endpoint, string key, string model, string prompt, string? payload, CancellationToken token)
     {
         using var json = await SendAsync(new(endpoint, "chat/completions"), new
         {
             model, stream = false,
-            messages = new[] { new { role = "system", content = prompt }, new { role = "user", content = payload } }
+            messages = payload == null
+                ? new[] { new { role = "user", content = prompt } }
+                : new[] { new { role = "system", content = prompt }, new { role = "user", content = payload } }
         }, key, token);
         var text = json.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
         if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("モデルから本文が返りませんでした。");

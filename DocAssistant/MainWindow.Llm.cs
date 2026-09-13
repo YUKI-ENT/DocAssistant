@@ -15,6 +15,7 @@ public partial class MainWindow
     private sealed record PayloadOption(string Name, CheckBox Enabled);
     private readonly List<PayloadOption> llmOptions = [];
     private bool changingLlmPeriod;
+    private bool llmRequestUsesPatient, llmResultUsesPatient, llmMessageUsesPatient;
 
     internal static DateTime? LlmPeriodStart(string period, DateTime today) => period switch
     {
@@ -53,6 +54,8 @@ public partial class MainWindow
         LlmPeriod.ItemsSource = new[] { "全期間", "5年", "3年", "1年", "6か月", "当日のみ", "日付指定" };
         LlmPeriod.SelectedItem = "日付指定";
         RefreshLlmPrompts(settings.Llm.PromptIndex);
+        if (string.IsNullOrEmpty(LlmMessage.Text)) LlmMessage.Text = LlmPromptText.Text;
+        LlmAttachmentChanged(this, new RoutedEventArgs());
         EnableChartDrag(LlmResult);
         foreach (var name in new[] { "所見", "投薬", "処置", "検査", "注射" })
         {
@@ -130,7 +133,7 @@ public partial class MainWindow
         try { await action(cancellation.Token); }
         catch (OperationCanceledException) { LlmStatus.Text = "中止しました（または応答がタイムアウトしました）。"; }
         catch (Exception ex) { LlmStatus.Text = ex is JsonException or KeyNotFoundException or InvalidOperationException ? ex.Message : "処理に失敗しました。接続先とAccessの状態を確認してください。"; }
-        finally { llmCancellation = null; LlmInputs.IsEnabled = LlmGenerate.IsEnabled = true; LlmCancel.IsEnabled = false; }
+        finally { llmCancellation = null; llmRequestUsesPatient = false; LlmInputs.IsEnabled = LlmGenerate.IsEnabled = true; LlmCancel.IsEnabled = false; }
     }
     private async void LoadLlmModels(object sender, RoutedEventArgs e) => await RunLlm(async token =>
     {
@@ -253,21 +256,69 @@ public partial class MainWindow
     }
     private async void GenerateLlm(object sender, RoutedEventArgs e) => await RunLlm(async token =>
     {
-        var endpoint = ReadLlmEndpoint();
-        var model = (LlmModels.SelectedItem as string ?? ""); var prompt = LlmPromptText.Text;
-        if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(prompt)) throw new InvalidOperationException("モデルとプロンプトを指定してください。");
-        PersistLlm(); SetClinicalText(LlmResult, "");
-        LlmStatus.Text = "送信対象を取得中…";
-        var payload = await PrepareLlmPayload(token);
-        var version = llmPatientVersion;
-        LlmStatus.Text = $"{endpoint.Host}:{endpoint.Port} / {model} で生成中…";
-        var result = await llmClient.GenerateAsync(endpoint, LlmKey.Password, model, prompt, payload, token);
-        settings.Llm.Model = model;
-        settings.Save();
-        token.ThrowIfCancellationRequested();
-        if (version != llmPatientVersion || chartClosed) return;
-        SetClinicalText(LlmResult, result); LlmStatus.Text = "生成完了。結果をコピー、または選択してPDFへドラッグできます。";
+        await SendLlmMessageAsync(token, llmClient);
+        settings.Llm.Model = LlmModels.SelectedItem as string ?? "";
+        PersistLlm();
     });
+
+    private async Task SendLlmMessageAsync(CancellationToken token, LlmClient client)
+    {
+        var endpoint = ReadLlmEndpoint();
+        var model = LlmModels.SelectedItem as string ?? ""; var prompt = LlmMessage.Text;
+        if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(prompt)) throw new InvalidOperationException("モデルと今回の送信文を指定してください。");
+        bool attach = LlmAttachChart.IsChecked == true;
+        bool usesPatient = attach || llmMessageUsesPatient;
+        llmRequestUsesPatient = usesPatient;
+        var version = llmPatientVersion;
+        // With attachment off, do not read/wait for Access, validate dates, or add a
+        // hidden template, empty payload message, or previous conversation history.
+        var payload = attach ? await PrepareLlmPayload(token) : null;
+        token.ThrowIfCancellationRequested();
+        LlmStatus.Text = $"{endpoint.Host}:{endpoint.Port} / {model} で生成中…";
+        var result = await client.GenerateAsync(endpoint, LlmKey.Password, model, prompt, payload, token);
+        token.ThrowIfCancellationRequested();
+        if (usesPatient && version != llmPatientVersion) throw new OperationCanceledException(token);
+        if (chartClosed) return;
+        SetClinicalText(LlmResult, result); llmResultUsesPatient = usesPatient;
+        LlmStatus.Text = "生成完了。結果を入力欄に取り込んで続けて指示できます。";
+    }
+
+    private void LlmAttachmentChanged(object sender, RoutedEventArgs e)
+    {
+        if (LlmPayloadSettings == null || LlmSendHint == null) return;
+        bool attach = LlmAttachChart.IsChecked == true;
+        LlmPayloadSettings.Visibility = attach ? Visibility.Visible : Visibility.Collapsed;
+        LlmSendHint.Text = attach ? "送信文に加えて、選択したカルテ情報を送信します。"
+            : "入力欄の文章だけを送信します。Accessへの接続は不要です。";
+    }
+
+    private void LlmMessageChanged(object sender, TextChangedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(LlmMessage.Text)) llmMessageUsesPatient = false;
+    }
+
+    private void UseLlmTemplate(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(LlmPromptText.Text)) { LlmStatus.Text = "定型プロンプトを選択・入力してください。"; return; }
+        LlmMessage.Text = LlmPromptText.Text; llmMessageUsesPatient = false;
+        LlmMessage.Focus(); LlmMessage.CaretIndex = LlmMessage.Text.Length;
+        LlmStatus.Text = "定型文を入力欄に取り込みました。今回だけの変更は定型文には保存されません。";
+    }
+
+    private void UseLlmResult(object sender, RoutedEventArgs e)
+    {
+        var text = new TextRange(LlmResult.Document.ContentStart, LlmResult.Document.ContentEnd).Text.Trim();
+        if (text.Length == 0) { LlmStatus.Text = "取り込む結果がありません。"; return; }
+        LlmMessage.Text = "\r\n\r\n" + text; llmMessageUsesPatient = llmResultUsesPatient;
+        LlmAttachChart.IsChecked = false;
+        LlmMessage.Focus(); LlmMessage.CaretIndex = 0; LlmMessage.ScrollToHome();
+        LlmStatus.Text = "結果を取り込み、カルテ添付をOFFにしました。先頭に「以下を英訳してください」などの指示を入力してください。";
+    }
+
+    private void ClearLlmMessage(object sender, RoutedEventArgs e)
+    {
+        LlmMessage.Clear(); llmMessageUsesPatient = false; LlmMessage.Focus();
+    }
     private void CancelLlm(object sender, RoutedEventArgs e) => llmCancellation?.Cancel();
     private void CopyLlmResult(object sender, RoutedEventArgs e)
     {
@@ -281,10 +332,13 @@ public partial class MainWindow
     private void TrackLlmPatient(AccessPatientDisplay display)
     {
         if (llmPatient == display.Text) return;
-        llmPatient = display.Text; llmPatientVersion++; llmCancellation?.Cancel();
+        llmPatient = display.Text; llmPatientVersion++;
+        bool cleared = llmRequestUsesPatient || llmResultUsesPatient || llmMessageUsesPatient;
+        if (llmRequestUsesPatient) llmCancellation?.Cancel();
         if (LlmPeriod.SelectedItem as string == "全期間")
             LlmPeriodHint.Text = "初診日を生成時に取得します（所見はAccessの取得範囲内）。";
-        SetClinicalText(LlmResult, "");
-        LlmStatus.Text = "患者情報が変わったため、前の結果をクリアしました。";
+        if (llmResultUsesPatient) { SetClinicalText(LlmResult, ""); llmResultUsesPatient = false; }
+        if (llmMessageUsesPatient) { LlmMessage.Clear(); llmMessageUsesPatient = false; }
+        if (cleared) LlmStatus.Text = "患者情報が変わったため、その患者の結果・取り込んだ送信文をクリアしました。";
     }
 }

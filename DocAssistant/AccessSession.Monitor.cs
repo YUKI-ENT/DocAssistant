@@ -1,6 +1,6 @@
 namespace DocAssistant;
 
-internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null);
+internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null, string DatabasePath = "");
 
 internal sealed partial class AccessSession
 {
@@ -29,7 +29,7 @@ internal sealed partial class AccessSession
                     injections ? ReadMedicationHistory(running, id, "注射") : null) : null);
             if (!result.Detected || string.IsNullOrEmpty(result.Text)) { cachedNotes = null; cachedMedication = null; }
             VerifyDatabase(running, path);
-            return result with { FirstVisit = firstDate };
+            return result with { FirstVisit = firstDate, DatabasePath = path };
         }
         finally { Release(running); }
     });

@@ -14,11 +14,14 @@ public partial class MainWindow
         internal string Response = "{\"data\":[{\"id\":\"local-model\"}]}";
         internal Uri? Uri;
         internal string? Body, Authorization;
+        internal Action? BeforeResponse;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Uri = request.RequestUri; Authorization = request.Headers.Authorization?.ToString();
             Body = request.Content == null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            BeforeResponse?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             return new(Status) { Content = new StringContent(Response, Encoding.UTF8, "application/json") };
         }
     }
@@ -55,10 +58,12 @@ public partial class MainWindow
             Check(restored.Llm.Prompts.Count == settings.Llm.Prompts.Count && restored.Llm.Port == settings.Llm.Port, "LLM settings roundtrip");
             TrackLlmPatient(new(true, "", "患者A"));
             SetClinicalText(LlmResult, "患者Aの結果");
+            llmRequestUsesPatient = llmResultUsesPatient = true;
             using var pending = new CancellationTokenSource(); llmCancellation = pending;
             TrackLlmPatient(new(true, "", "患者B"));
             Check(pending.IsCancellationRequested && new System.Windows.Documents.TextRange(LlmResult.Document.ContentStart, LlmResult.Document.ContentEnd).Text.Trim() == "", "Patient change cancels request and clears payload");
             llmCancellation = null;
+            llmRequestUsesPatient = false;
             var savedCompletion = chartUpdateCompletion;
             var savedReading = chartReading;
             try
@@ -89,6 +94,54 @@ public partial class MainWindow
                 Check(changed, "Patient change while waiting prevents sending");
             }
             finally { chartReading = savedReading; chartUpdateCompletion = savedCompletion; }
+            handler.Status = HttpStatusCode.OK;
+            LlmModels.ItemsSource = new[] { "local-model" }; LlmModels.SelectedIndex = 0;
+            LlmAttachChart.IsChecked = false;
+            LlmMessage.Text = "以下を英訳してください。\r\n明日は休診です。";
+            string savedTemplate = LlmPromptText.Text;
+            var savedDate = LlmStartDate.SelectedDate;
+            try
+            {
+                Check(chartSession == null, "Chat test runs without Access");
+                chartReading = true;
+                chartUpdateCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                LlmStartDate.SelectedDate = DateTime.Today.AddDays(1);
+                foreach (var option in llmOptions) option.Enabled.IsChecked = false;
+                handler.BeforeResponse = () => TrackLlmPatient(new(true, "", "患者D"));
+                await RunLlm(token => SendLlmMessageAsync(token, client)).WaitAsync(TimeSpan.FromSeconds(2));
+                using var chatBody = JsonDocument.Parse(handler.Body!);
+                var messages = chatBody.RootElement.GetProperty("messages");
+                Check(messages.GetArrayLength() == 1 && messages[0].GetProperty("role").GetString() == "user" &&
+                    messages[0].GetProperty("content").GetString() == LlmMessage.Text, "Chat sends only exact editable text, without payload or hidden template");
+                string ResultText() => new System.Windows.Documents.TextRange(LlmResult.Document.ContentStart, LlmResult.Document.ContentEnd).Text.Trim();
+                Check(ResultText() == "生成テスト" && !chartUpdateCompletion.Task.IsCompleted, "Chat ignores chart wait, dates, selection and patient switches");
+                handler.BeforeResponse = null;
+                handler.Status = HttpStatusCode.Unauthorized;
+                await RunLlm(token => SendLlmMessageAsync(token, client));
+                Check(ResultText() == "生成テスト" && LlmStatus.Text.Contains("401"), "Failed chat preserves prior result");
+                handler.Status = HttpStatusCode.OK;
+                LlmAttachChart.IsChecked = true;
+                UseLlmResult(this, new System.Windows.RoutedEventArgs());
+                Check(LlmAttachChart.IsChecked == false && LlmMessage.Text.Contains("生成テスト") && LlmPromptText.Text == savedTemplate, "Reuse result disables payload without changing saved template");
+                llmResultUsesPatient = true;
+                UseLlmResult(this, new System.Windows.RoutedEventArgs());
+                handler.BeforeResponse = () => TrackLlmPatient(new(true, "", "患者E"));
+                await RunLlm(token => SendLlmMessageAsync(token, client));
+                Check(ResultText() == "" && LlmMessage.Text == "" && LlmStatus.Text.Contains("中止"), "Patient-derived chat cancels and clears on patient change");
+                handler.BeforeResponse = null;
+                LlmMessage.Text = "  "; handler.Body = null;
+                await RunLlm(token => SendLlmMessageAsync(token, client));
+                Check(handler.Body == null && LlmGenerate.IsEnabled, "Empty chat is rejected without sending and restores controls");
+                UseLlmTemplate(this, new System.Windows.RoutedEventArgs());
+                Check(LlmMessage.Text == savedTemplate && !llmMessageUsesPatient, "Explicit template insertion");
+            }
+            finally
+            {
+                chartReading = savedReading; chartUpdateCompletion = savedCompletion;
+                LlmStartDate.SelectedDate = savedDate;
+                foreach (var option in llmOptions) option.Enabled.IsChecked = true;
+                handler.BeforeResponse = null;
+            }
             Check(llmOptions.Count == 5 && LlmStartDate.SelectedDate <= DateTime.Today, "Shared start date");
             Check(LlmPeriodStart("1年", new DateTime(2024, 2, 29)) == new DateTime(2023, 2, 28), "Leap-year shortcut");
             Check(LlmPeriodStart("6か月", new DateTime(2026, 8, 31)) == new DateTime(2026, 2, 28), "Month-end shortcut");
@@ -160,9 +213,13 @@ public partial class MainWindow
             LlmModels.ItemsSource = new[] { "local-model" }; LlmModels.SelectedIndex = 0; LlmStatus.Text = "テスト用表示 · 外部送信なし";
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             RenderVisual(this, Path.Combine(folder, "window.png"), 1740, 940);
+            LlmAttachChart.IsChecked = true;
+            LlmPayloadSettings.IsExpanded = true;
+            RenderVisual(this, Path.Combine(folder, "payload.png"), 1740, 940);
+            LlmPayloadSettings.IsExpanded = false;
             LlmConnectionExpander.IsExpanded = true;
             RenderVisual(this, Path.Combine(folder, "connection.png"), 1740, 940);
-            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: endpoint, models, completion payload, authentication, HTTP errors, cancellation, settings, patient isolation, pane layout");
+            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: endpoint, models, completion payload, authentication, HTTP errors, cancellation, settings, patient isolation, payload-free chat without Access, exact message, result reuse, failure retention, pane layout");
         }
         catch (Exception ex) { File.WriteAllText(Path.Combine(folder, "result.txt"), ex.ToString()); Environment.ExitCode = 1; }
         finally { Close(); }
