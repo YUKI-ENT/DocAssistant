@@ -127,6 +127,7 @@ public partial class MainWindow
                 Margin = new Thickness(0, 5, 10, 5), VerticalAlignment = VerticalAlignment.Top
             };
             var box = ChartValue(string.IsNullOrWhiteSpace(value) ? "未登録" : value);
+            if (parts[0] == "注意リスト") box.Foreground = label.Foreground = System.Windows.Media.Brushes.Red;
             EnableChartDrag(box);
             System.Windows.Controls.Grid.SetRow(label, row);
             System.Windows.Controls.Grid.SetRow(box, row);

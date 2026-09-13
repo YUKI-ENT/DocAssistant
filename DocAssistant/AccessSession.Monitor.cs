@@ -1,12 +1,12 @@
 namespace DocAssistant;
 
-internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null, string DatabasePath = "", string PatientMemo = "");
+internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null, string DatabasePath = "", string PatientMemo = "", DateTime? LastVisit = null);
 
 internal sealed partial class AccessSession
 {
     internal bool MonitorTimedOut => timedOut;
 
-    public Task<AccessPatientDisplay> PollPatientAsync(bool forceNotes = false, bool medication = false, bool procedures = false, bool firstVisit = false, bool tests = false, bool injections = false) => RunAsync(() =>
+    public Task<AccessPatientDisplay> PollPatientAsync(bool forceNotes = false, bool medication = false, bool procedures = false, bool firstVisit = false, bool tests = false, bool injections = false, bool lastVisit = false) => RunAsync(() =>
     {
         if (!IsAccessInstalled()) return new AccessPatientDisplay(false, "Accessがインストールされていません。");
         object? running = null;
@@ -16,10 +16,11 @@ internal sealed partial class AccessSession
             running = GetRunningAccess();
             if (running == null) return new AccessPatientDisplay(false, "電子カルテの起動を待っています。");
             var path = GetDatabasePath(running);
-            DateTime? firstDate = null;
+            DateTime? firstDate = null, lastDate = null;
             var result = ReadAutomaticPatient(running, (controls, id) =>
             {
                 if (firstVisit) firstDate = ReadFirstVisit(running, id);
+                if (lastVisit) lastDate = ReadLastVisit(running, id);
                 return ReadCachedNotes(controls, id, path, forceNotes);
             },
                 medication || procedures || tests || injections ? id => (
@@ -29,7 +30,7 @@ internal sealed partial class AccessSession
                     injections ? ReadMedicationHistory(running, id, "注射") : null) : null);
             if (!result.Detected || string.IsNullOrEmpty(result.Text)) { cachedNotes = null; cachedMedication = null; }
             VerifyDatabase(running, path);
-            return result with { FirstVisit = firstDate, DatabasePath = path };
+            return result with { FirstVisit = firstDate, LastVisit = lastDate, DatabasePath = path };
         }
         finally { Release(running); }
     });

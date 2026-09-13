@@ -37,8 +37,14 @@ internal sealed partial class AccessSession
         {
             sub = Step(subformName + "の取得", () => AccessDispatch.Get(controls, "Item", subformName));
             form = Step(subformName + ".Formの取得", () => AccessDispatch.Get(sub, "Form"));
+            var liveBefore = draft ? ReadLiveDraftRow(form) : null;
             records = Step(subformName + ".RecordsetCloneの取得", () => AccessDispatch.Get(form, "RecordsetClone"));
-            return ReadNoteRecords(records, chartNumber, draft);
+            var result = ReadNoteRecords(records, chartNumber, draft);
+            if (!draft) return result;
+            var liveAfter = ReadLiveDraftRow(form);
+            if (liveBefore != liveAfter)
+                throw new InvalidOperationException("取得中に当日所見が変更されました。再取得します。");
+            return MergeLiveDraftRow(result, liveAfter, chartNumber);
         }
         finally
         {

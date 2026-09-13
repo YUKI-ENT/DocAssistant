@@ -12,6 +12,7 @@ public partial class MainWindow
     private int referralIndex = -1;
     private bool changingReferral, referralDirty, referralBusy, referralLoaded, referralSaveUncertain;
     private long referralPatientVersion;
+    private string referralAttention = "";
 
     private void TrackReferralPatient(AccessPatientDisplay display)
     {
@@ -20,6 +21,8 @@ public partial class MainWindow
         var next = display.Detected && !string.IsNullOrWhiteSpace(display.DatabasePath) &&
             long.TryParse(Read("カルテ番号"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) && id >= 0
             ? new ReferralPatient(display.DatabasePath, id, Read("氏名")) : null;
+        referralAttention = next == null ? "" : display.PatientMemo;
+        if (ReferralAddAttention != null) ReferralAddAttention.IsEnabled = next?.SameIdentity(editingReferralPatient) == true && !string.IsNullOrWhiteSpace(referralAttention);
         if ((next == null && currentReferralPatient == null) || next?.SameIdentity(currentReferralPatient) == true) return;
         currentReferralPatient = next; referralPatientVersion++;
         UpdateReferralControls();
@@ -33,12 +36,16 @@ public partial class MainWindow
         bool matches = editingReferralPatient?.SameIdentity(currentReferralPatient) == true;
         ReferralPatientWarning.Visibility = editingReferralPatient != null && !matches ? Visibility.Visible : Visibility.Collapsed;
         ReferralPatientLabel.Text = editingReferralPatient?.Display ?? currentReferralPatient?.Display ?? "Accessで患者を表示してください。";
+        ReferralMedication.IsEnabled = matches;
+        ReferralAddMedication.IsEnabled = matches && !referralBusy && referralBaseline != null && ReferralMedication.SelectedItem is ReferralPrescription;
+        ReferralAddAttention.IsEnabled = matches && !string.IsNullOrWhiteSpace(referralAttention);
         ReferralFields.IsEnabled = !referralBusy && referralBaseline != null;
         ReferralOlder.IsEnabled = !referralBusy && referralLetters.Count > 0 && referralIndex < referralLetters.Count - 1;
         ReferralNewer.IsEnabled = !referralBusy && referralIndex > 0;
         ReferralReload.IsEnabled = !referralBusy && currentReferralPatient != null;
         ReferralNew.IsEnabled = !referralBusy && !referralSaveUncertain && matches;
         ReferralCopy.IsEnabled = !referralBusy && !referralSaveUncertain && matches && referralBaseline != null;
+        ReferralOpenAccess.IsEnabled = !referralBusy && !referralSaveUncertain && matches && referralBaseline != null;
         ReferralSave.IsEnabled = !referralBusy && !referralSaveUncertain && matches && referralDirty && referralBaseline != null;
         ReferralPosition.Text = referralBaseline == null ? (referralLoaded ? "過去の紹介状はありません。「新規」から作成できます。" : "未取得") :
             referralBaseline.Number == null ? "新規の下書き · 未保存" :
@@ -83,6 +90,12 @@ public partial class MainWindow
                 ReferralDestination1.ItemsSource = history.Choices?.Destinations1;
                 ReferralDestination2.ItemsSource = history.Choices?.Destinations2;
                 ReferralDoctor.ItemsSource = history.Choices?.Doctors;
+                ReferralPurpose.ItemsSource = history.Purposes;
+                ReferralTemplate.ItemsSource = history.Templates;
+                ReferralTemplate.SelectedIndex = -1;
+                ReferralMedication.ItemsSource = ReferralPrescription.FromHistory(history.Medication);
+                ReferralMedication.SelectedIndex = -1;
+                ReferralMedication.ToolTip = history.Medication?.Status ?? "投薬履歴を取得できませんでした。再取得してください。";
             }
             finally { changingReferral = false; }
             ReferralChoicesHint.Text = history.ChoicesStatus;
@@ -148,28 +161,88 @@ public partial class MainWindow
         ReferralStatus.Text = "内容をコピーして今日付の下書きを作りました。元の紹介状は変更しません。";
     }
 
-    private async void SaveReferral(object sender, RoutedEventArgs e)
+    private async void SaveReferral(object sender, RoutedEventArgs e) => await SaveOrOpenReferralAsync(false);
+    private async void OpenReferralInAccess(object sender, RoutedEventArgs e) => await SaveOrOpenReferralAsync(true);
+
+    private async Task SaveOrOpenReferralAsync(bool openInAccess)
     {
-        if (referralBusy || referralSaveUncertain || !referralDirty || referralBaseline == null || editingReferralPatient?.SameIdentity(currentReferralPatient) != true) return;
+        if (referralBusy || referralSaveUncertain || (!referralDirty && !openInAccess) || referralBaseline == null || editingReferralPatient?.SameIdentity(currentReferralPatient) != true) return;
         var draft = CaptureReferral();
         if (draft.Date == null || !DateTime.TryParse(ReferralDate.Text, out var enteredDate) || enteredDate.Date != draft.Date.Value.Date)
         { ReferralStatus.Text = "正しい日付を入力してください。"; return; }
-        referralBusy = true; UpdateReferralControls(); ReferralStatus.Text = "Accessに保存中…";
+        bool saving = referralDirty;
+        var patient = editingReferralPatient;
+        referralBusy = true; UpdateReferralControls(); ReferralStatus.Text = saving ? "Accessに保存中…" : "Accessの紹介状を開いています…";
         try
         {
             if (chartSession == null || chartSession.MonitorTimedOut) throw new InvalidOperationException("カルテ情報の「再取得」でAccessに接続してください。");
-            var saved = await chartSession.SaveReferralAsync(editingReferralPatient, referralBaseline, draft);
-            referralLetters = referralLetters.Where(l => l.Number != saved.Number).Append(saved).OrderByDescending(l => l.Number).ToArray();
-            DisplayReferral(saved, Array.FindIndex(referralLetters.ToArray(), l => l.Number == saved.Number));
-            ReferralStatus.Text = $"紹介番号 {saved.Number} をAccessに保存しました。印刷はAccess側で行ってください。";
+            if (saving)
+            {
+                var saved = await chartSession.SaveReferralAsync(patient, referralBaseline, draft);
+                referralLetters = referralLetters.Where(l => l.Number != saved.Number).Append(saved).OrderByDescending(l => l.Number).ToArray();
+                DisplayReferral(saved, Array.FindIndex(referralLetters.ToArray(), l => l.Number == saved.Number));
+                ReferralStatus.Text = $"紹介番号 {saved.Number} をAccessに保存しました。印刷はAccess側で行ってください。";
+                saving = false;
+            }
+            if (openInAccess)
+            {
+                if (patient.SameIdentity(currentReferralPatient) != true)
+                    throw new InvalidOperationException("患者が変わりました。紹介状の対象患者を確認してください。");
+                await chartSession.OpenReferralAsync(patient, referralBaseline!);
+                ReferralStatus.Text = $"紹介番号 {referralBaseline!.Number} をAccessで開きました。プレビュー・印刷はAccess側のボタンで行ってください。";
+            }
         }
         catch (Exception ex)
         {
-            referralSaveUncertain = ex is not InvalidOperationException;
-            ReferralStatus.Text = ex is InvalidOperationException ? ex.Message :
+            referralSaveUncertain = saving && ex is not InvalidOperationException;
+            ReferralStatus.Text = ex is InvalidOperationException ? ex.Message : !saving ?
+                "Accessの紹介状を開けませんでした。保存済みの内容は保持しています。Access側の表示を確認してください。" :
                 "保存完了を確認できません。連打せず、Access側の紹介状を確認してください。下書きは保持しています。";
         }
         finally { FinishReferralOperation(); }
+    }
+
+    private void InsertReferralTemplate(object sender, RoutedEventArgs e)
+    {
+        if (referralBusy || referralBaseline == null || ReferralTemplate.SelectedItem is not string text) return;
+        int position = ((sender as Button)?.Tag as string) switch
+        {
+            "Start" => 0,
+            "End" => ReferralTests.Text.Length,
+            _ => ReferralTests.CaretIndex
+        };
+        ReferralTests.Select(position, 0);
+        ReferralTests.SelectedText = text;
+        ReferralTests.CaretIndex = position + text.Length;
+        ReferralTests.Focus();
+    }
+
+    private void ReferralMedicationSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (ready) UpdateReferralControls();
+    }
+
+    private void AddReferralMedication(object sender, RoutedEventArgs e)
+    {
+        if (referralBusy || referralBaseline == null || editingReferralPatient?.SameIdentity(currentReferralPatient) != true ||
+            ReferralMedication.SelectedItem is not ReferralPrescription prescription) return;
+        var prefix = ReferralTests.Text.Length == 0 || ReferralTests.Text.EndsWith("\n") ? "" : "\r\n";
+        ReferralTests.Select(ReferralTests.Text.Length, 0);
+        ReferralTests.SelectedText = prefix + prescription.Text + "\r\n";
+        ReferralTests.CaretIndex = ReferralTests.Text.Length;
+        ReferralTests.Focus();
+        ReferralTests.ScrollToEnd();
+        ReferralStatus.Text = $"{prescription.DateLabel}の処方を検査欄の文末に追加しました。";
+    }
+
+    private void AddReferralAttention(object sender, RoutedEventArgs e)
+    {
+        if (referralBusy || referralBaseline == null || editingReferralPatient?.SameIdentity(currentReferralPatient) != true ||
+            string.IsNullOrWhiteSpace(referralAttention)) return;
+        ReferralRemarks.Text += (ReferralRemarks.Text.Length == 0 || ReferralRemarks.Text.EndsWith("\n") ? "" : "\r\n") + referralAttention;
+        ReferralRemarks.CaretIndex = ReferralRemarks.Text.Length;
+        ReferralRemarks.Focus();
+        ReferralStatus.Text = "注意リストを備考欄の末尾に追加しました。";
     }
 
     private void FinishReferralOperation()

@@ -91,7 +91,7 @@ public sealed class FakeReferralPatientForm(FakeReferralApp app)
 }
 public sealed class FakeReferralForms(FakeReferralApp app)
 {
-    public FakeReferralPatientForm this[string name] => name == "患者マスター" ? new(app) : throw new InvalidOperationException("Must never open referral form");
+    public object this[string name] => name == "患者マスター" ? new FakeReferralPatientForm(app) : name == "紹介状" ? new FakeOpenedReferralForm(app) : throw new InvalidOperationException();
 }
 public sealed class FakeReferralProject(FakeReferralApp app)
 {
@@ -103,10 +103,38 @@ public sealed class FakeReferralApp(FakeReferralRecord record)
     public string Path = @"D:\Clinical\client.mdb";
     public long PatientNumber = 12345;
     public bool ReferralFormOpen;
+    public long OpenedNumber = 80, OpenedChart = 12341;
+    public FakeReferralCommands DoCmd => new(this);
+    public int OpenCalls, SelectCalls;
+    public string OpenWhere = "";
     public FakeReferralProject CurrentProject => new(this);
     public FakeReferralForms Forms => new(this);
     public FakeReferralDatabase Database { get; } = new(record);
     public FakeReferralDatabase CurrentDb() => Database;
+}
+
+public sealed class FakeOpenedReferralForm(FakeReferralApp app)
+{
+    public bool NewRecord => false;
+    public FakeOpenedReferralControls Controls => new(app);
+}
+public sealed class FakeOpenedReferralControls(FakeReferralApp app)
+{
+    public FakePatientValue this[string name] => new(name == "紹介番号" ? app.OpenedNumber : app.OpenedChart);
+}
+public sealed class FakeReferralCommands(FakeReferralApp app)
+{
+    public void OpenForm(string name, int view, object? filter = null, string? where = null, object? mode = null, int window = 0, object? args = null)
+    {
+        if (name != "紹介状" || view != 0) throw new InvalidOperationException("Unexpected form");
+        app.OpenCalls++; app.OpenWhere = where ?? ""; app.ReferralFormOpen = true;
+    }
+    public void SelectObject(int type, string name, bool navigation)
+    {
+        if (type != 2 || name != "紹介状" || navigation) throw new InvalidOperationException("Unexpected selection");
+        app.SelectCalls++;
+    }
+    public void Restore() { }
 }
 
 public partial class MainWindow
@@ -197,6 +225,23 @@ public partial class MainWindow
             Rejected(failure, new(failure), baseline, draft, "Update failure preserves original");
             Check(Equals(failure.Saved["紹介目的"], baseline.Purpose) && failure.Cancels == 1 && failure.Closed, "Failed write leaves no staged edit");
 
+            var opener = new FakeReferralApp(new FakeReferralRecord(Row(baseline)));
+            AccessSession.OpenReferralForm(opener, patient, baseline);
+            Check(opener.OpenCalls == 1 && opener.SelectCalls == 1 && opener.OpenWhere == "[紹介番号] = 80 AND [カルテ番号] = 12341", "Open form uses exact saved number and branch");
+            AccessSession.OpenReferralForm(opener, patient, baseline);
+            Check(opener.OpenCalls == 1 && opener.SelectCalls == 2, "Existing matching form is brought forward without reopening");
+            opener.OpenedNumber = 999;
+            bool wrongForm = false;
+            try { AccessSession.OpenReferralForm(opener, patient, baseline); } catch (InvalidOperationException) { wrongForm = true; }
+            Check(wrongForm && opener.OpenCalls == 1 && opener.SelectCalls == 2, "Existing other referral is not moved or closed");
+            var wrongOpen = new FakeReferralApp(new FakeReferralRecord(Row(baseline))) { PatientNumber = 99999 };
+            bool wrongOpenPatient = false;
+            try { AccessSession.OpenReferralForm(wrongOpen, patient, baseline); } catch (InvalidOperationException) { wrongOpenPatient = true; }
+            Check(wrongOpenPatient && wrongOpen.OpenCalls == 0, "Patient mismatch blocks opening");
+            var overridden = new FakeReferralApp(new FakeReferralRecord(Row(baseline))) { OpenedNumber = 999 };
+            bool wrongEvent = false;
+            try { AccessSession.OpenReferralForm(overridden, patient, baseline); } catch (InvalidOperationException) { wrongEvent = true; }
+            Check(wrongEvent && overridden.OpenCalls == 1 && overridden.SelectCalls == 0, "Open event changing record is detected");
             currentReferralPatient = editingReferralPatient = patient; referralLoaded = true;
             referralLetters = [baseline, baseline with { Number = 70, Date = new DateTime(2026, 7, 1) }];
             ReferralDestination1.ItemsSource = new[] { new ReferralSuggestion("架空総合病院", 30), new ReferralSuggestion("サンプル診療所", 12) };
@@ -205,16 +250,61 @@ public partial class MainWindow
             DisplayReferral(baseline, 0); WorkspaceTabs.SelectedItem = ReferralTab;
             MoveReferral(1); Check(referralBaseline?.Number == 70 && ReferralNewer.IsEnabled, "Previous/next history navigation");
             MoveReferral(-1); Check(referralBaseline == baseline && !referralDirty, "Navigation returns clean baseline");
+            var medicationDate = new DateTime(2026, 8, 1);
+            var longDrug = "架空薬剤" + new string('長', 90);
+            var prescriptions = ReferralPrescription.FromHistory(new("1234", "", [
+                new("2026/07/01", "", "", Rows: [new(medicationDate.AddMonths(-1), "old", 12345, 1, "以前の薬", "1")]),
+                new("2026/08/01", "", "", Rows: [new(medicationDate, "latest", 12345, 2, longDrug, "2"), new(medicationDate, "latest", 12345, 1, "架空薬A", "1")]) ]));
+            Check(prescriptions.Count == 2 && prescriptions[0].DateLabel == "2026/08/01" && prescriptions[0].Label.EndsWith("…"), "Prescription choices are newest first with abbreviated preview");
+            Check(prescriptions[0].Content.StartsWith("架空薬A") && prescriptions[0].Text.Contains(longDrug), "Prescription preserves complete medication content and row order");
+            ReferralMedication.ItemsSource = prescriptions;
+            Check(!ReferralAddMedication.IsEnabled, "Prescription append needs a selection");
+            ReferralMedication.SelectedIndex = 0;
+            Check(!referralDirty && ReferralAddMedication.IsEnabled, "Selecting a prescription does not alter draft");
+            ReferralTests.Text = "既存の検査本文";
+            AddReferralMedication(this, new RoutedEventArgs());
+            Check(ReferralTests.Text == "既存の検査本文\r\n" + prescriptions[0].Text + "\r\n" && referralDirty, "Append full dated prescription without overwriting existing text");
+            ReferralTests.Text = "";
+            AddReferralMedication(this, new RoutedEventArgs());
+            Check(ReferralTests.Text == prescriptions[0].Text + "\r\n", "Empty test field has no leading blank line");
+            Check(ReferralPrescription.FromHistory(null).Count == 0, "Failed history cannot retain old prescriptions");
+            ReferralPurpose.ItemsSource = new[] { "精査", "加療" };
+            ReferralPurpose.SelectedIndex = 0;
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Check(CaptureReferral().Purpose == "精査" && referralDirty, "Purpose selection updates draft");
+            ReferralTemplate.ItemsSource = new[] { "追加文" }; ReferralTemplate.SelectedIndex = 0;
+            ReferralTests.Text = "前後"; ReferralTests.CaretIndex = 1;
+            InsertReferralTemplate(new System.Windows.Controls.Button { Tag = "Cursor" }, new RoutedEventArgs());
+            Check(ReferralTests.Text == "前追加文後", "Template inserts at retained caret without replacing text");
+            InsertReferralTemplate(new System.Windows.Controls.Button { Tag = "Start" }, new RoutedEventArgs());
+            InsertReferralTemplate(new System.Windows.Controls.Button { Tag = "End" }, new RoutedEventArgs());
+            Check(ReferralTests.Text == "追加文前追加文後追加文", "Template supports start and end");
+            TrackReferralPatient(new(true, "", "氏名：動作確認 太郎（架空）\r\nカルテ番号：12345", DatabasePath: patient.DatabasePath, PatientMemo: "注意A\r\n注意B"));
+            ReferralRemarks.Text = "既存備考";
+            AddReferralAttention(this, new RoutedEventArgs());
+            Check(ReferralRemarks.Text == "既存備考\r\n注意A\r\n注意B", "Attention appends intact multiline memo");
+            ShowPatientFields("氏名：架空", "注意A");
+            Check(PatientFieldsGrid.Children.OfType<System.Windows.Controls.TextBox>().Last().Foreground == System.Windows.Media.Brushes.Red, "Attention is red");
             ReferralPurpose.Text = "編集途中の下書き";
             Check(referralDirty && ReferralSave.IsEnabled, "Editing enables save");
             TrackReferralPatient(new(true, "", "氏名：別の患者\r\nカルテ番号：99999", DatabasePath: patient.DatabasePath));
             Check(referralDirty && ReferralPurpose.Text == "編集途中の下書き" && !ReferralSave.IsEnabled && ReferralPatientWarning.Visibility == Visibility.Visible,
                 "Patient switch preserves draft and blocks wrong-patient save");
+            var testsBefore = ReferralTests.Text;
+            AddReferralMedication(this, new RoutedEventArgs());
+            Check(ReferralTests.Text == testsBefore && !ReferralAddMedication.IsEnabled && !ReferralMedication.IsEnabled, "Patient switch blocks prescription append");
+            var remarksBefore = ReferralRemarks.Text;
+            AddReferralAttention(this, new RoutedEventArgs());
+            Check(ReferralRemarks.Text == remarksBefore && !ReferralAddAttention.IsEnabled, "Different patient attention cannot enter draft");
             currentReferralPatient = patient; DisplayReferral(baseline, 0);
             CopyReferral(this, new RoutedEventArgs()); Check(referralDirty && referralBaseline is { Number: null } && referralBaseline.ChartNumber == patient.ChartNumber, "Copy button creates local draft");
             DisplayReferral(baseline, 0); ReferralStatus.Text = "動作確認用の架空データです。Accessへの接続・保存は行っていません。";
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            ReferralScroll.ScrollToTop(); UpdateLayout();
             RenderVisual((FrameworkElement)Content, Path.Combine(folder, "referral.png"), 1740, 940);
+            ReferralScroll.ScrollToVerticalOffset(350); UpdateLayout();
+            RenderVisual((FrameworkElement)Content, Path.Combine(folder, "prescription.png"), 1740, 940);
+            ReferralScroll.ScrollToTop(); UpdateLayout();
             ReferralDestination1.IsDropDownOpen = true;
             ReferralDestination1.IsDropDownOpen = false;
             ToggleLlmPane(this, new RoutedEventArgs()); ToggleChartPane(this, new RoutedEventArgs());

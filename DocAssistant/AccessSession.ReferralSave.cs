@@ -224,22 +224,7 @@ internal sealed partial class AccessSession
 
     private static void EnsureReferralFormClosed(object app)
     {
-        object? project = null, forms = null;
-        try
-        {
-            project = AccessDispatch.Get(app, "CurrentProject"); forms = AccessDispatch.Get(project, "AllForms");
-            for (int i = 0; i < Convert.ToInt32(AccessDispatch.Get(forms, "Count")); i++)
-            {
-                object? form = null;
-                try
-                {
-                    form = AccessDispatch.Get(forms, "Item", i);
-                    if (Convert.ToString(AccessDispatch.Get(form, "Name")) == "紹介状" && Convert.ToBoolean(AccessDispatch.Get(form, "IsLoaded")))
-                        throw new InvalidOperationException("Accessの紹介状フォームを閉じてから保存してください。フォーム側の採番・中断処理との干渉を避けます。");
-                }
-                finally { Release(form); }
-            }
-        }
-        finally { Release(forms); Release(project); }
+        if (IsReferralFormOpen(app))
+            throw new InvalidOperationException("Accessの紹介状フォームを閉じてから保存してください。フォーム側の採番・中断処理との干渉を避けます。");
     }
 }

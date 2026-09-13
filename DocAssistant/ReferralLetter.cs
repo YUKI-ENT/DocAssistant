@@ -28,4 +28,25 @@ internal sealed record ReferralSuggestion(string Value, long Count)
 }
 internal sealed record ReferralChoices(IReadOnlyList<ReferralSuggestion> Destinations1,
     IReadOnlyList<ReferralSuggestion> Destinations2, IReadOnlyList<ReferralSuggestion> Doctors);
-internal sealed record ReferralHistory(IReadOnlyList<ReferralLetter> Letters, ReferralChoices? Choices, string ChoicesStatus);
+internal sealed record ReferralHistory(IReadOnlyList<ReferralLetter> Letters, ReferralChoices? Choices, string ChoicesStatus,
+    IReadOnlyList<string>? Purposes = null, IReadOnlyList<string>? Templates = null, MedicationHistory? Medication = null);
+
+internal sealed record ReferralPrescription(string DateLabel, string Content)
+{
+    public string Label
+    {
+        get
+        {
+            var preview = string.Join(" / ", Content.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
+            return DateLabel + " — " + (preview.Length > 70 ? preview[..70] + "…" : preview);
+        }
+    }
+    internal string Text => $"処方日：{DateLabel}\r\n{Content}";
+    internal static IReadOnlyList<ReferralPrescription> FromHistory(MedicationHistory? history) =>
+        (history?.Days ?? []).Where(day => day.Rows?.Count > 0)
+            .OrderByDescending(day => day.Rows!.Max(row => row.Date))
+            .Select(day => new ReferralPrescription(day.Key,
+                string.Join("\r\n", day.Rows!.GroupBy(row => (row.Visit, row.Number))
+                    .SelectMany(group => group.OrderBy(row => row.Order))
+                    .Select(row => $"{row.Name}　数量：{row.Quantity}")))).ToArray();
+}

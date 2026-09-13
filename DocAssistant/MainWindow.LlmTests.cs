@@ -145,11 +145,14 @@ public partial class MainWindow
             Check(llmOptions.Count == 5 && LlmStartDate.SelectedDate <= DateTime.Today, "Shared start date");
             Check(LlmPeriodStart("1年", new DateTime(2024, 2, 29)) == new DateTime(2023, 2, 28), "Leap-year shortcut");
             Check(LlmPeriodStart("6か月", new DateTime(2026, 8, 31)) == new DateTime(2026, 2, 28), "Month-end shortcut");
-            foreach (var period in new[] { "5年", "3年", "1年", "6か月", "当日のみ" })
+            foreach (var period in new[] { "5年", "3年", "1年", "6か月" })
             {
                 LlmPeriod.SelectedItem = period;
                 Check(LlmStartDate.SelectedDate == LlmPeriodStart(period, DateTime.Today), "Shortcut updates date: " + period);
             }
+            LlmPeriod.SelectedItem = "最終受診日のみ";
+            Check(!LlmStartDate.IsEnabled && LlmStartDate.SelectedDate == null && LlmPeriodHint.Text.Contains("その1日"), "Latest visit is resolved at send time");
+            LlmPeriod.SelectedItem = "6か月";
             LlmStartDate.SelectedDate = DateTime.Today.AddDays(-7);
             Check((string)LlmPeriod.SelectedItem == "日付指定", "Manual date switches to custom");
             LlmPeriod.SelectedItem = "全期間";
@@ -164,6 +167,18 @@ public partial class MainWindow
             Check(payload.Contains("境界日の所見") && payload.Contains("薬剤A") && !payload.Contains("範囲外") &&
                 !payload.Contains("日付不明") && !payload.Contains("薬剤B") && !payload.Contains("処置A"), "Inclusive independent date filters and excluded categories");
             Check(BuildLlmPayload(display, [("処置", day, day)]).Contains("処置A"), "Separate procedure payload");
+            var latestRanges = LatestVisitRanges(display with { LastVisit = day.AddHours(15) }, ["所見", "投薬", "処置"], DateTime.Today);
+            Check(latestRanges.All(r => r.Start == day && r.End == day), "Latest date uses identical normalized start/end for every category");
+            var latestPayload = BuildLlmPayload(display, latestRanges);
+            Check(latestPayload.Contains("境界日の所見") && latestPayload.Contains("薬剤B") && latestPayload.Contains("処置A") && !latestPayload.Contains("範囲外") && !latestPayload.Contains("薬剤A"), "Historical latest visit sends only the last day without requiring current data");
+            Check(AccessSession.VisitBoundarySql("12345", true).Contains("Max([受診日])") && AccessSession.VisitBoundarySql("12345", true).Contains(">= 12340") && AccessSession.VisitBoundarySql("12345", true).Contains("< 12350"), "Latest visit comes from visit table across same patient branches");
+            foreach (DateTime? invalid in new DateTime?[] { null, DateTime.Today.AddDays(1) })
+            {
+                bool rejectedLatest = false;
+                try { LatestVisitRanges(display with { LastVisit = invalid }, ["所見"], DateTime.Today); }
+                catch (InvalidOperationException) { rejectedLatest = true; }
+                Check(rejectedLatest, "Missing/future latest date is not silently replaced by today");
+            }
             var today = DateTime.Today;
             var current = display with
             {

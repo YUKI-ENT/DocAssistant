@@ -26,6 +26,9 @@ internal sealed partial class AccessSession
             $"GROUP BY Trim([{field}]) ORDER BY Count(*) DESC, Trim([{field}]);";
     }
 
+    internal const string ReferralPurposesSql = "SELECT [紹介目的] FROM [紹介目的リスト] WHERE [紹介目的] Is Not Null;";
+    internal const string ReferralTemplatesSql = "SELECT [コメントコード], [コメント区分コード], [コメント] FROM [紹介状コメントリスト] WHERE [コメント区分コード] = 13 ORDER BY [コメントコード];";
+
     internal Task<ReferralHistory> ReadReferralsAsync(ReferralPatient patient, bool refreshChoices) => RunAsync(() =>
     {
         object? app = null;
@@ -52,8 +55,29 @@ internal sealed partial class AccessSession
                 cachedReferralChoices = null;
                 choicesStatus = "紹介先候補を取得できませんでした。直接入力できます。";
             }
+            IReadOnlyList<string> ReadList(string sql, string field, string label)
+            {
+                try
+                {
+                    return ReadReferralQuery(app, sql).Select(row => (Convert.ToString(row[field]) ?? "").ReplaceLineEndings("\r\n"))
+                        .Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    choicesStatus += $" {label}を取得できませんでした。";
+                    return [];
+                }
+            }
+            var purposes = ReadList(ReferralPurposesSql, "紹介目的", "紹介目的リスト");
+            var templates = ReadList(ReferralTemplatesSql, "コメント", "紹介状コメントリスト");
+            MedicationHistory? medication = null;
+            try { medication = ReadMedicationHistory(app, patient.ChartNumber.ToString(CultureInfo.InvariantCulture)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                choicesStatus += " 投薬履歴を取得できませんでした。再取得してください。";
+            }
             VerifyReferralPatient(app, patient);
-            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus);
+            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus, purposes, templates, medication);
         }
         finally { Release(app); }
     });

@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         Loaded += async (_, _) =>
         {
+            if (args.Contains("--notes-test")) { await TestNotesAsync(); return; }
             if (args.Contains("--referral-test")) { await TestReferrals(); return; }
             if (args.Contains("--pdf-export-test")) { await TestPdfExport(); return; }
             if (args.Contains("--llm-test")) { InitializeLlm(); await TestLlmAsync(); return; }

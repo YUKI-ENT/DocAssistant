@@ -5,6 +5,7 @@ namespace DocAssistant;
 public sealed class FakeNoteRecords(params Dictionary<string, object?>[] rows)
 {
     private int index;
+    public Action? OnGetRows;
     public bool Closed { get; private set; }
     public bool BOF => rows.Length == 0 || index < 0;
     public bool EOF => rows.Length == 0 || index >= rows.Length;
@@ -15,6 +16,7 @@ public sealed class FakeNoteRecords(params Dictionary<string, object?>[] rows)
     public void Move(int offset) => index += offset;
     public Array GetRows(int count)
     {
+        OnGetRows?.Invoke();
         count = Math.Min(count, rows.Length - index);
         var names = rows[0].Keys.ToArray();
         var result = new object?[names.Length, count];
@@ -43,6 +45,53 @@ public sealed class FakeNoteForm(FakeNoteRecords records)
 
 public partial class MainWindow
 {
+    private async Task TestNotesAsync()
+    {
+        var folder = System.IO.Path.GetFullPath("tmp/notes-test"); System.IO.Directory.CreateDirectory(folder);
+        try
+        {
+            CheckClinicalNotes();
+            CheckLiveDraftNotes();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "result.txt"), "PASS: clinical notes, live draft controls, unsaved and focused text, blank clone, multiline rows, clearing, patient/visit isolation, mid-read changes. No database access.");
+        }
+        catch (Exception ex) { System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "result.txt"), ex.ToString()); Environment.ExitCode = 1; }
+        finally { Close(); }
+    }
+
+    private void CheckLiveDraftNotes()
+    {
+        static Dictionary<string, object?> Row(int order, string text, string visit = "103") => new()
+        { ["カルテ番号"] = 1L, ["受診コード"] = visit, ["順番"] = order, ["症状"] = text };
+        var body = new FakeLiveNoteControl("症状", "画面にある所見\n続き");
+        var patient = new FakeLiveNoteControl("カルテ番号", "001");
+        var order = new FakeLiveNoteControl("順番", "2");
+        var visit = new FakeLiveNoteControl("受診コード", "103");
+        var controls = new FakeAccessCollection(patient, visit, order, body);
+        AccessNotes Read(FakeNoteRecords records) => AccessSession.ReadDraftNotes(
+            new FakePatientControls(draft: new FakeLiveNoteSub(new FakeLiveNoteForm(records, controls))), "001");
+        var empty = new FakeNoteRecords();
+        Check(Read(empty).Text == "画面にある所見\r\n続き" && empty.Closed, "Blank clone still displays live control value without Update");
+        body.FocusedText = "入力中の最新文字";
+        var rows = new FakeNoteRecords(Row(1, "第1行"), Row(2, "古い本文"), Row(3, "第3行"), Row(1, "前の受診", "102"));
+        var result = Read(rows);
+        Check(result.Notes!.Count == 3 && result.Text.Contains("入力中の最新文字") && !result.Text.Contains("古い本文") && !result.Text.Contains("前の受診"), "Focused Text replaces exactly one row and excludes old visit");
+        Check(result.Text.IndexOf("第1行") < result.Text.IndexOf("入力中") && result.Text.IndexOf("入力中") < result.Text.IndexOf("第3行"), "Live row preserves other rows and ordering");
+        body.FocusedText = "";
+        Check(Read(new FakeNoteRecords(Row(2, "削除した本文"))).Text == "", "Intentional deletion never restores the saved text");
+        body.FocusedText = null; body.Value = "更新後の値";
+        Check(Read(new FakeNoteRecords(Row(2, "古い値"))).Text == "更新後の値", "Value updates on subsequent polls");
+        patient.Value = "002";
+        bool wrongPatient = false;
+        try { Read(new FakeNoteRecords()); } catch (InvalidOperationException) { wrongPatient = true; }
+        Check(wrongPatient, "Wrong branch is rejected");
+        patient.Value = "001";
+        var changing = new FakeNoteRecords(Row(2, "保存値")) { OnGetRows = () => visit.Value = "104" };
+        bool switched = false;
+        try { Read(changing); } catch (InvalidOperationException ex) { switched = ex.Message.Contains("変更されました"); }
+        Check(switched && changing.Closed, "Changing visit during clone read rejects mixed data and closes clone");
+    }
+
     private AccessPatientDisplay CheckClinicalNotes()
     {
         static Dictionary<string, object?> Row(string date, string visit, long number, decimal order, string? text, string? instruction = null) => new()
@@ -153,4 +202,24 @@ public sealed class FakeChangingNoteControls
 {
     private int reads;
     public object this[string name] => new FakePatientValue(name == "カルテ番号" ? (++reads >= 5 ? "011" : "001") : "架空");
+}
+
+public sealed class FakeLiveNoteControl(string source, string value)
+{
+    public string ControlSource => source;
+    public string Value { get; set; } = value;
+    public string? FocusedText;
+    public string Text => FocusedText ?? throw new System.Runtime.InteropServices.COMException("No focus", unchecked((int)0x800A0889));
+}
+public sealed class FakeLiveNoteForm(FakeNoteRecords records, FakeAccessCollection controls)
+{
+    public FakeNoteRecords RecordsetClone => records;
+    public FakeAccessCollection Controls => controls;
+    public void Update() => throw new InvalidOperationException("Never save Access from a monitor");
+    public void Requery() => throw new InvalidOperationException("Never requery the live form");
+    public object Recordset => throw new InvalidOperationException("Do not access the live recordset");
+}
+public sealed class FakeLiveNoteSub(FakeLiveNoteForm form)
+{
+    public FakeLiveNoteForm Form => form;
 }

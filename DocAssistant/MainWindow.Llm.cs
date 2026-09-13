@@ -21,7 +21,7 @@ public partial class MainWindow
     {
         "5年" => today.Date.AddYears(-5), "3年" => today.Date.AddYears(-3),
         "1年" => today.Date.AddYears(-1), "6か月" => today.Date.AddMonths(-6),
-        "当日のみ" => today.Date, _ => null
+        _ => null
     };
     private void LlmPeriodChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -30,10 +30,10 @@ public partial class MainWindow
         changingLlmPeriod = true;
         try
         {
-            LlmStartDate.IsEnabled = period != "全期間";
-            if (period == "全期間") LlmStartDate.SelectedDate = null;
+            LlmStartDate.IsEnabled = period is not ("全期間" or "最終受診日のみ");
+            if (period is "全期間" or "最終受診日のみ") LlmStartDate.SelectedDate = null;
             else if (LlmPeriodStart(period, DateTime.Today) is DateTime start) LlmStartDate.SelectedDate = start;
-            LlmPeriodHint.Text = period == "全期間" ? "初診日を生成時に取得します（所見はAccessの取得範囲内）。" : "開始日から今日まで（両端を含む）";
+            LlmPeriodHint.Text = period == "全期間" ? "初診日を生成時に取得します（所見はAccessの取得範囲内）。" : period == "最終受診日のみ" ? "最終受診日を送信時に取得し、その1日だけ送ります。" : "開始日から今日まで（両端を含む）";
         }
         finally { changingLlmPeriod = false; }
     }
@@ -51,7 +51,7 @@ public partial class MainWindow
         LlmModels.ItemsSource = string.IsNullOrWhiteSpace(settings.Llm.Model) ? Array.Empty<string>() : new[] { settings.Llm.Model };
         LlmModels.SelectedItem = settings.Llm.Model;
         LlmStartDate.SelectedDate = DateTime.Today.AddMonths(-3);
-        LlmPeriod.ItemsSource = new[] { "全期間", "5年", "3年", "1年", "6か月", "当日のみ", "日付指定" };
+        LlmPeriod.ItemsSource = new[] { "全期間", "5年", "3年", "1年", "6か月", "最終受診日のみ", "日付指定" };
         LlmPeriod.SelectedItem = "日付指定";
         RefreshLlmPrompts(settings.Llm.PromptIndex);
         if (string.IsNullOrEmpty(LlmMessage.Text)) LlmMessage.Text = LlmPromptText.Text;
@@ -163,7 +163,8 @@ public partial class MainWindow
         var today = DateTime.Today;
         string period = LlmPeriod.SelectedItem as string ?? "日付指定";
         bool all = period == "全期間";
-        var selectedStart = all ? DateTime.MinValue : LlmPeriodStart(period, today) ?? LlmStartDate.SelectedDate;
+        bool latest = period == "最終受診日のみ";
+        var selectedStart = all || latest ? DateTime.MinValue : LlmPeriodStart(period, today) ?? LlmStartDate.SelectedDate;
         if (selectedStart is not DateTime start || start.Date > today)
             throw new InvalidOperationException("開始日には今日以前の日付を指定してください。");
         var ranges = llmOptions.Where(o => o.Enabled.IsChecked == true)
@@ -178,7 +179,7 @@ public partial class MainWindow
         AccessPatientDisplay display;
         try
         {
-            display = await chartSession.PollPatientAsync(true, ranges.Any(r => r.Name == "投薬"), ranges.Any(r => r.Name == "処置"), all, ranges.Any(r => r.Name == "検査"), ranges.Any(r => r.Name == "注射"));
+            display = await chartSession.PollPatientAsync(true, ranges.Any(r => r.Name == "投薬"), ranges.Any(r => r.Name == "処置"), all, ranges.Any(r => r.Name == "検査"), ranges.Any(r => r.Name == "注射"), lastVisit: latest);
             ShowChart(display);
         }
         finally
@@ -196,8 +197,21 @@ public partial class MainWindow
             ranges = ranges.Select(r => (r.Name, Start: first, r.End)).ToArray();
             LlmPeriodHint.Text = $"初診日 {first:yyyy/MM/dd} 〜 今日（所見はAccessの取得範囲内）";
         }
+        if (latest)
+        {
+            ranges = LatestVisitRanges(display, ranges.Select(r => r.Name), today);
+            LlmPeriodHint.Text = $"最終受診日 {ranges[0].Start:yyyy/MM/dd} のみ";
+        }
         return BuildLlmPayload(display, ranges);
     }
+    internal static (string Name, DateTime Start, DateTime End)[] LatestVisitRanges(
+        AccessPatientDisplay display, IEnumerable<string> categories, DateTime today)
+    {
+        if (display.LastVisit is not DateTime latest || latest.Date > today.Date)
+            throw new InvalidOperationException("最終受診日を確認できません。日付指定を使用してください。");
+        return categories.Select(name => (name, latest.Date, latest.Date)).ToArray();
+    }
+
     internal static string BuildLlmPayload(AccessPatientDisplay display, (string Name, DateTime Start, DateTime End)[] ranges)
     {
         var sections = new List<object>();
