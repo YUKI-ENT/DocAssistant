@@ -200,6 +200,7 @@ public sealed class FakeBirthdayFields
     public object this[string name] => new FakePatientValue(name switch
     {
         "年号" => "昭和", "生年" => 55, "月" => 4, "日" => 15,
+        "メモ" => "薬剤：テスト注意\r\n連絡時の注意事項",
         _ => throw new InvalidOperationException("Unexpected birthday field")
     });
 }

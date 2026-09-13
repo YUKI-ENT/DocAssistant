@@ -86,6 +86,26 @@ internal sealed partial class AccessSession
         }
         finally { Release(fields); Release(record); }
     }
+    internal static string ReadPatientMemo(object form)
+    {
+        object? record = null, fields = null, field = null;
+        try
+        {
+            // The patient form exposes 患者包括マスター.メモ in its RecordSource.
+            // Read its current record, without depending on the control name or navigating.
+            record = AccessDispatch.Get(form, "Recordset");
+            if (Convert.ToBoolean(AccessDispatch.Get(record, "BOF")) || Convert.ToBoolean(AccessDispatch.Get(record, "EOF"))) return "取得できません";
+            fields = AccessDispatch.Get(record, "Fields");
+            field = AccessDispatch.Get(fields, "Item", "メモ");
+            var value = AccessDispatch.Get(field, "Value");
+            return value is null or DBNull ? "" : Convert.ToString(value) ?? "";
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or MissingMemberException)
+        {
+            return "取得できません";
+        }
+        finally { Release(field); Release(fields); Release(record); }
+    }
     internal static string ReadControlValue(object controls, string name)
     {
         object? control = null;

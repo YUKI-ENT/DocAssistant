@@ -71,10 +71,11 @@ public partial class MainWindow
         ChartNotesStatus.Visibility = display.NotesStatus.Contains("取得できません") || display.NotesStatus.Contains("上限")
             ? Visibility.Visible : Visibility.Collapsed;
         // Preserve selection while polling the same values so the user can copy text.
-        if (shownPatientText != display.Text)
+        if (shownPatientText != display.Text || shownPatientMemo != display.PatientMemo)
         {
             shownPatientText = display.Text;
-            ShowPatientFields(display.Text);
+            shownPatientMemo = display.PatientMemo;
+            ShowPatientFields(display.Text, display.PatientMemo);
         }
         ChartPlaceholder.Visibility = string.IsNullOrEmpty(display.Text) ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -93,8 +94,9 @@ public partial class MainWindow
     }
 
     private string shownPatientText = "";
+    private string shownPatientMemo = "";
 
-    private void ShowPatientFields(string text)
+    private void ShowPatientFields(string text, string memo = "")
     {
         PatientFieldsGrid.Children.Clear();
         PatientFieldsGrid.RowDefinitions.Clear();
@@ -102,7 +104,9 @@ public partial class MainWindow
         PatientFieldsGrid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         PatientFieldsGrid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         var fields = text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.TrimEnd('\r').Split('：', 2)).Where(parts => parts.Length == 2).ToArray();
+            .Select(line => line.TrimEnd('\r').Split('：', 2)).Where(parts => parts.Length == 2).ToList();
+        // Keep multiline memo text intact, including colons inside the attention list.
+        if (!string.IsNullOrEmpty(text)) fields.Add(["注意リスト", memo]);
         string Read(string name) => fields.FirstOrDefault(parts => parts[0] == name)?[1] ?? "";
         int row = 0;
         foreach (var parts in fields.OrderBy(parts => parts[0] == "カルテ番号" ? 0 : 1))

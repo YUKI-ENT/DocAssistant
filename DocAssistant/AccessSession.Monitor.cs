@@ -1,6 +1,6 @@
 namespace DocAssistant;
 
-internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null, string DatabasePath = "");
+internal sealed record AccessPatientDisplay(bool Detected, string Status, string Text = "", string NotesText = "", string NotesStatus = "", string InstructionsText = "", string DraftText = "", string DraftStatus = "", MedicationHistory? Medication = null, AccessNotes? Clinical = null, CurrentMedication? TodayMedication = null, CurrentMedication? TodayTests = null, CurrentMedication? TodayProcedures = null, CurrentMedication? TodayInjections = null, CurrentMedication? TodayBasic = null, MedicationHistory? Procedures = null, AccessNotes? DraftClinical = null, DateTime? FirstVisit = null, MedicationHistory? Tests = null, MedicationHistory? Injections = null, string DatabasePath = "", string PatientMemo = "");
 
 internal sealed partial class AccessSession
 {
@@ -66,6 +66,7 @@ internal sealed partial class AccessSession
             controls = AccessDispatch.Get(form, "Controls");
             var id = ReadControlValue(controls, "カルテ番号");
             var patient = ReadPatientControls(controls, form);
+            var memo = ReadPatientMemo(form);
             AccessNotes draft;
             try { draft = ReadDraftNotes(controls, id); }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -95,7 +96,7 @@ internal sealed partial class AccessSession
             var history = readHistory?.Invoke(id) ?? (null, null, null, null);
             if (ReadControlValue(controls, "カルテ番号") != id)
                 throw new InvalidOperationException("取得中に患者が切り替わりました。もう一度取得してください。");
-            return new(true, "電子カルテあり · 表示中の患者に追従しています。", patient, notes.Text, notes.Status, notes.Instructions, draft.Text, draft.Status, history.Item1, notes, todayMedication, todayTests, todayProcedures, todayInjections, todayBasic, history.Item2, draft, Tests: history.Item3, Injections: history.Item4);
+            return new(true, "電子カルテあり · 表示中の患者に追従しています。", patient, notes.Text, notes.Status, notes.Instructions, draft.Text, draft.Status, history.Item1, notes, todayMedication, todayTests, todayProcedures, todayInjections, todayBasic, history.Item2, draft, Tests: history.Item3, Injections: history.Item4, PatientMemo: memo);
         }
         finally { Release(controls); Release(form); Release(forms); Release(allForms); Release(project); }
     }

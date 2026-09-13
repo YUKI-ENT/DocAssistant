@@ -50,6 +50,7 @@ public partial class MainWindow : Window
             if (args.Contains("--referral-test")) { await TestReferrals(); return; }
             if (args.Contains("--pdf-export-test")) { await TestPdfExport(); return; }
             if (args.Contains("--llm-test")) { InitializeLlm(); await TestLlmAsync(); return; }
+            if (args.Contains("--patient-test")) { await TestPatientMemoAsync(); return; }
             if (args.Contains("--smoke") || args.Contains("--editor-test")) { await Smoke(); return; }
             if (args.Contains("--close-test"))
             {
