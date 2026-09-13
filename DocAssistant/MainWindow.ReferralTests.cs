@@ -268,6 +268,18 @@ public partial class MainWindow
             AddReferralMedication(this, new RoutedEventArgs());
             Check(ReferralTests.Text == prescriptions[0].Text + "\r\n", "Empty test field has no leading blank line");
             Check(ReferralPrescription.FromHistory(null).Count == 0, "Failed history cannot retain old prescriptions");
+            var filtered = ReferralPrescription.FromHistory(new("1234", "", [
+                new("2026/08/01", "", "", Rows: [new(medicationDate, "a", 12345, 1, "処方箋料", "1"),
+                    new(medicationDate, "a", 12345, 2, "一般名処方加算", "1"), new(medicationDate, "a", 12345, 3, "残す薬", "2")]),
+                new("2026/07/01", "", "", Rows: [new(medicationDate.AddMonths(-1), "b", 12345, 1, "処方箋料", "1")]) ]));
+            Check(filtered.Count == 1 && filtered[0].Content == "残す薬　数量：2", "Exclude prescription fees and generic-name additions; omit empty days");
+            var firstLine = new FirstLineConverter();
+            foreach (var newline in new[] { "\r\n", "\n", "\r" })
+                Check((string)firstLine.Convert("先頭行" + newline + "続き", typeof(string), null!, System.Globalization.CultureInfo.InvariantCulture) == "先頭行", "Template preview uses only first line");
+            ReferralTemplate.ItemsSource = new[] { "先頭行\r\n続き" }; ReferralTemplate.SelectedIndex = 0;
+            ReferralTests.Text = "";
+            InsertReferralTemplate(new System.Windows.Controls.Button { Tag = "End" }, new RoutedEventArgs());
+            Check(ReferralTests.Text == "先頭行\r\n続き", "Template insertion retains all lines");
             ReferralPurpose.ItemsSource = new[] { "精査", "加療" };
             ReferralPurpose.SelectedIndex = 0;
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);

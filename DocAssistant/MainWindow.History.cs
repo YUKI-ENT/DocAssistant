@@ -21,6 +21,7 @@ public partial class MainWindow
     });
     private void ResetHistory()
     {
+        EndAudiogram();
         typingTimer.Stop();
         history.Clear(); history.Add(Snapshot()); historyIndex = 0;
         savedSnapshot = history[0]; dirty = false; UpdateHistoryButtons();
@@ -72,8 +73,10 @@ public partial class MainWindow
         try
         {
             CancelGesture();
+            EndAudiogram();
             activeText = null;
             var data = JsonSerializer.Deserialize<EditorSnapshot>(snapshot)!;
+            documentTemplateTitle = data.Document.TemplateTitle;
             for (int i = 0; i < views.Count; i++)
             {
                 var canvas = views[i].Canvas;
@@ -117,7 +120,7 @@ public partial class MainWindow
             else if (e.Key == Key.S) { SaveProject(sender, e); e.Handled = true; }
         }
         else if (e.Key == Key.Delete && mode == "Select") { DeleteSelection(); e.Handled = true; }
-        else if (e.Key == Key.Escape) { CancelGesture(); Keyboard.ClearFocus(); CleanupEmptyText(); CommitHistory(); }
+        else if (e.Key == Key.Escape) { EndAudiogram(); CancelGesture(); Keyboard.ClearFocus(); CleanupEmptyText(); CommitHistory(); }
     }
     private void DeleteSelection()
     {

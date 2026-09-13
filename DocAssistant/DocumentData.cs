@@ -6,6 +6,7 @@ namespace DocAssistant;
 public sealed class DocumentData
 {
     public int Version { get; set; } = 3;
+    public string TemplateTitle { get; set; } = "";
     public List<List<TextData>> Pages { get; set; } = [];
     public List<List<ShapeData>> Shapes { get; set; } = [];
 }
@@ -58,6 +59,27 @@ internal sealed class ShapeElement : FrameworkElement
             case "Ellipse": dc.DrawEllipse(null, pen, new Point(ActualWidth / 2, ActualHeight / 2), rect.Width / 2, rect.Height / 2); break;
             case "Line":
                 dc.DrawLine(pen, Data.Reverse ? rect.BottomLeft : rect.TopLeft, Data.Reverse ? rect.TopRight : rect.BottomRight); break;
+            case "AudioCross":
+                dc.DrawLine(pen, rect.TopLeft, rect.BottomRight); dc.DrawLine(pen, rect.BottomLeft, rect.TopRight); break;
+            case "AudioBracketLeft":
+            case "AudioBracketRight":
+            case "AudioCornerLeft":
+            case "AudioCornerRight":
+                bool left = Data.Kind.EndsWith("Left");
+                var top = left ? rect.TopLeft : rect.TopRight;
+                var bottom = left ? rect.BottomLeft : rect.BottomRight;
+                dc.DrawLine(pen, top, bottom);
+                dc.DrawLine(pen, rect.TopLeft, rect.TopRight);
+                if (Data.Kind.Contains("Bracket")) dc.DrawLine(pen, rect.BottomLeft, rect.BottomRight);
+                break;
+            case "AudioArrowLeft":
+            case "AudioArrowRight":
+                bool toLeft = Data.Kind.EndsWith("Left");
+                var tip = toLeft ? rect.BottomLeft : rect.BottomRight;
+                dc.DrawLine(pen, toLeft ? rect.TopRight : rect.TopLeft, tip);
+                dc.DrawLine(pen, tip, new Point(tip.X, tip.Y - rect.Height * .45));
+                dc.DrawLine(pen, tip, new Point(tip.X + (toLeft ? 1 : -1) * rect.Width * .45, tip.Y));
+                break;
             default: dc.DrawRectangle(null, pen, rect); break;
         }
     }

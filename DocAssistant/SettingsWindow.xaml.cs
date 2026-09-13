@@ -13,7 +13,8 @@ public partial class SettingsWindow : Window
         Result = settings;
         SaveFolder.Text = settings.SaveFolder;
         TemplateFolder.Text = settings.TemplateFolder;
-        registered = (settings.TemplateFiles ?? []).Select(p => new TemplateItem(Path.GetFileNameWithoutExtension(p), p)).ToList();
+        registered = settings.GetRegisteredTemplates();
+        RsbaseNaming.IsChecked = settings.RsbasePdfNaming;
         Refresh(settings.DefaultTemplate);
     }
     private void Refresh(string? selected = null)
@@ -22,7 +23,7 @@ public partial class SettingsWindow : Window
         RegisteredFiles.ItemsSource = null; RegisteredFiles.ItemsSource = registered;
         try
         {
-            var items = new AppSettings { TemplateFolder = TemplateFolder.Text, TemplateFiles = registered.Select(t => t.Path).ToList() }.GetTemplates();
+            var items = new AppSettings { TemplateFolder = TemplateFolder.Text, Templates = registered }.GetTemplates();
             items.Insert(0, new TemplateItem("表示しない", ""));
             StartupTemplate.ItemsSource = items;
             StartupTemplate.SelectedItem = items.FirstOrDefault(t => t.Path == selected) ?? items[0];
@@ -53,14 +54,29 @@ public partial class SettingsWindow : Window
     {
         if (RegisteredFiles.SelectedItem is TemplateItem item) { registered.Remove(item); Refresh(); }
     }
+    private void TemplateSelected(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (TemplateTitle != null) TemplateTitle.Text = (RegisteredFiles.SelectedItem as TemplateItem)?.Name ?? "";
+    }
+    private void ApplyTitle(object sender, RoutedEventArgs e)
+    {
+        try { UpdateTitle(); Refresh(); }
+        catch (ArgumentException ex) { MessageBox.Show(this, ex.Message, "テンプレートタイトル"); }
+    }
+    private void UpdateTitle()
+    {
+        if (RegisteredFiles.SelectedItem is not TemplateItem item) return;
+        if (string.IsNullOrWhiteSpace(TemplateTitle.Text)) throw new ArgumentException("テンプレートタイトルを入力してください。");
+        registered[registered.IndexOf(item)] = item with { Name = TemplateTitle.Text.Trim() };
+    }
     private void Save(object sender, RoutedEventArgs e)
     {
         try
         {
             if (!Directory.Exists(SaveFolder.Text)) throw new IOException("保存先には存在するフォルダを選択してください。");
             if (!string.IsNullOrWhiteSpace(TemplateFolder.Text) && !Directory.Exists(TemplateFolder.Text)) throw new IOException("テンプレートフォルダが見つかりません。");
-            Refresh();
-            var updated = new AppSettings { SaveFolder = Path.GetFullPath(SaveFolder.Text), TemplateFolder = TemplateFolder.Text.Trim(), TemplateFiles = registered.Select(t => t.Path).ToList(), DefaultTemplate = (StartupTemplate.SelectedItem as TemplateItem)?.Path ?? "" };
+            UpdateTitle(); Refresh();
+            var updated = new AppSettings { SaveFolder = Path.GetFullPath(SaveFolder.Text), TemplateFolder = TemplateFolder.Text.Trim(), Templates = registered.ToList(), RsbasePdfNaming = RsbaseNaming.IsChecked == true, DefaultTemplate = (StartupTemplate.SelectedItem as TemplateItem)?.Path ?? "" };
             updated.AccessDatabasePath = Result.AccessDatabasePath;
             updated.AccessFormName = Result.AccessFormName;
             updated.Llm = Result.Llm;

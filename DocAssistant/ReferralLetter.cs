@@ -48,5 +48,8 @@ internal sealed record ReferralPrescription(string DateLabel, string Content)
             .Select(day => new ReferralPrescription(day.Key,
                 string.Join("\r\n", day.Rows!.GroupBy(row => (row.Visit, row.Number))
                     .SelectMany(group => group.OrderBy(row => row.Order))
-                    .Select(row => $"{row.Name}　数量：{row.Quantity}")))).ToArray();
+                    .Select(row => $"{row.Name}　数量：{row.Quantity}")
+                    .SelectMany(text => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+                    .Where(line => !line.Contains("処方箋", StringComparison.Ordinal) && !line.Contains("一般名", StringComparison.Ordinal)))))
+            .Where(prescription => !string.IsNullOrWhiteSpace(prescription.Content)).ToArray();
 }

@@ -34,6 +34,11 @@ public partial class MainWindow
         canvas.PreviewMouseLeftButtonDown += CanvasMouseDown;
         canvas.PreviewMouseMove += CanvasMouseMove;
         canvas.PreviewMouseLeftButtonUp += CanvasMouseUp;
+        canvas.PreviewMouseRightButtonDown += (_, e) =>
+        {
+            if (!IsAudiogramMode) return;
+            EndAudiogram(); Status.Text = "系列を終了しました。次の左クリックから新しい系列を開始します。"; e.Handled = true;
+        };
         canvas.LostMouseCapture += (_, _) => { if (gestureCanvas == canvas) CancelGesture(); };
     }
     private void CleanupEmptyText()
@@ -131,6 +136,7 @@ public partial class MainWindow
         if (!ready) return;
         FinishEditing();
         CancelGesture();
+        EndAudiogram();
         mode = ((RadioButton)sender).Tag?.ToString() ?? "Text";
         // Keep keyboard events routed through this window after changing tools.
         // Custom drawing handles PreviewMouseDown, so WPF will not focus the canvas for us.
@@ -143,6 +149,8 @@ public partial class MainWindow
             "Text" => "クリックして文字入力。空の枠は別の場所を選ぶと消えます。",
             "Ink" => "ドラッグして手書き。太さは上のツールバーで変更できます。",
             "Erase" => "線をなぞると手書きを削除します。図形・文字は選択してDelete。",
+            "AudioRight" or "AudioLeft" => "左クリックで聴力点を追加。右クリック／Escで系列を終了。サイズ・色・太さはツールバーで指定。",
+            var audio when audio.StartsWith("Audio") => "左クリックで記号を配置。サイズ・色・太さはツールバーで指定。選択・移動で調整できます。",
             _ => "ドラッグして図形を描画。線種で実線／点線を選べます。"
         };
     }
@@ -153,7 +161,7 @@ public partial class MainWindow
             var canvas = view.Canvas;
             canvas.EditingMode = mode switch { "Ink" => InkCanvasEditingMode.Ink, "Erase" => InkCanvasEditingMode.EraseByStroke, "Select" => InkCanvasEditingMode.Select, _ => InkCanvasEditingMode.None };
             canvas.DefaultDrawingAttributes = new DrawingAttributes { Color = ColorValue, Width = ThicknessValue, Height = ThicknessValue, FitToCurve = true };
-            canvas.Cursor = mode is "Rectangle" or "Ellipse" or "Line" ? Cursors.Cross : Cursors.Arrow;
+            canvas.Cursor = IsAudiogramMode || mode is "Rectangle" or "Ellipse" or "Line" ? Cursors.Cross : Cursors.Arrow;
             foreach (var box in canvas.Children.OfType<TextBox>()) { box.IsHitTestVisible = mode == "Text"; box.IsReadOnly = mode != "Text"; box.BorderBrush = mode is "Text" or "Select" ? Brushes.LightSteelBlue : Brushes.Transparent; }
         }
     }
@@ -224,6 +232,10 @@ public partial class MainWindow
         if (mode == "Text" && InsideText(e.OriginalSource as DependencyObject, canvas)) return;
         FinishEditing();
         var point = LimitPoint(canvas, e.GetPosition(canvas));
+        if (IsAudiogramMode)
+        {
+            canvas.Focus(); AddAudiogramPoint(canvas, point); e.Handled = true; return;
+        }
         if (mode == "Text")
         {
             foreach (var view in views) view.Canvas.Select(new StrokeCollection(), Array.Empty<UIElement>());

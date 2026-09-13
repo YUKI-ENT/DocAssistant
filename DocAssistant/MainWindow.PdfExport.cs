@@ -16,11 +16,18 @@ public partial class MainWindow
     {
         if (original == null) return;
         FinishEditing();
+        string fileName = Path.GetFileNameWithoutExtension(DocumentTitle.Text) + "_記入済み.pdf";
+        if (settings.RsbasePdfNaming)
+        {
+            var naming = new RsbaseExportWindow(RsbaseFileName.PatientId(shownPatientText), documentTemplateTitle) { Owner = this };
+            if (naming.ShowDialog() != true) return;
+            fileName = naming.FileName;
+        }
         var dialog = new SaveFileDialog
         {
             Title = "PDF出力", Filter = "PDF|*.pdf", DefaultExt = ".pdf", AddExtension = true,
             InitialDirectory = settings.SaveFolder,
-            FileName = Path.GetFileNameWithoutExtension(DocumentTitle.Text) + "_記入済み.pdf"
+            FileName = fileName
         };
         if (dialog.ShowDialog(this) != true) return;
         await Guard(async () =>

@@ -12,6 +12,8 @@ public sealed class AppSettings
     public string SaveFolder { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     public string TemplateFolder { get; set; } = FindWorkspace();
     public List<string> TemplateFiles { get; set; } = [];
+    public List<TemplateItem> Templates { get; set; } = [];
+    public bool RsbasePdfNaming { get; set; }
     public string DefaultTemplate { get; set; } = "";
     public string AccessDatabasePath { get; set; } = "";
     public string AccessFormName { get; set; } = "患者マスター";
@@ -41,10 +43,14 @@ public sealed class AppSettings
     }
     public List<TemplateItem> GetTemplates()
     {
-        var paths = new List<string>(TemplateFiles ?? []);
-        if (Directory.Exists(TemplateFolder)) paths.AddRange(Directory.EnumerateFiles(TemplateFolder, "*.pdf"));
-        return paths.Where(File.Exists).Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(Path.GetFileName, StringComparer.CurrentCultureIgnoreCase)
-            .Select(path => new TemplateItem(Path.GetFileNameWithoutExtension(path), path)).ToList();
+        var items = GetRegisteredTemplates();
+        if (Directory.Exists(TemplateFolder)) items.AddRange(Directory.EnumerateFiles(TemplateFolder, "*.pdf")
+            .Select(path => new TemplateItem(Path.GetFileNameWithoutExtension(path), path)));
+        return items.Where(t => File.Exists(t.Path)).Select(t => t with { Path = Path.GetFullPath(t.Path) })
+            .DistinctBy(t => t.Path, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
+    public List<TemplateItem> GetRegisteredTemplates() => (Templates ?? []).Concat((TemplateFiles ?? [])
+        .Select(path => new TemplateItem(Path.GetFileNameWithoutExtension(path), path)))
+        .DistinctBy(t => t.Path, StringComparer.OrdinalIgnoreCase).ToList();
 }

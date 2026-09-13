@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private bool dirty, busy, closeRequested, ready, restoring, changingTemplate;
     private AppSettings settings = new();
     private TemplateItem? currentTemplate;
+    private string documentTemplateTitle = "";
 
     public MainWindow()
     {
@@ -52,6 +53,8 @@ public partial class MainWindow : Window
             if (args.Contains("--pdf-export-test")) { await TestPdfExport(); return; }
             if (args.Contains("--llm-test")) { InitializeLlm(); await TestLlmAsync(); return; }
             if (args.Contains("--patient-test")) { await TestPatientMemoAsync(); return; }
+            if (args.Contains("--audiogram-test")) { await TestAudiogramAsync(); return; }
+            if (args.Contains("--rsbase-test")) { await TestRsbaseAsync(); return; }
             if (args.Contains("--smoke") || args.Contains("--editor-test")) { await Smoke(); return; }
             if (args.Contains("--close-test"))
             {
@@ -114,7 +117,15 @@ public partial class MainWindow : Window
     private void RefreshTemplates()
     {
         changingTemplate = true;
-        try { TemplateBox.ItemsSource = settings.GetTemplates(); TemplateBox.SelectedItem = TemplateBox.Items.OfType<TemplateItem>().FirstOrDefault(t => t.Path == currentTemplate?.Path); }
+        try
+        {
+            TemplateBox.ItemsSource = settings.GetTemplates();
+            TemplateBox.SelectedItem = TemplateBox.Items.OfType<TemplateItem>().FirstOrDefault(t => t.Path == currentTemplate?.Path);
+            if (TemplateBox.SelectedItem is TemplateItem selected)
+            {
+                currentTemplate = selected; documentTemplateTitle = selected.Name;
+            }
+        }
         finally { changingTemplate = false; }
     }
     private async void TemplateChanged(object sender, SelectionChangedEventArgs e)
@@ -145,6 +156,8 @@ public partial class MainWindow : Window
     {
         await LoadPdf(await File.ReadAllBytesAsync(path), null, null);
         DocumentTitle.Text = Path.GetFileName(path);
+        documentTemplateTitle = settings.GetTemplates().FirstOrDefault(t => string.Equals(t.Path, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase))?.Name ?? "";
+        ResetHistory();
     }
     private async void OpenPdf(object sender, RoutedEventArgs e)
     {
@@ -179,6 +192,7 @@ public partial class MainWindow : Window
             CancelGesture();
             activeText = null;
             views.Clear(); views.AddRange(prepared); Pages.Children.Clear(); original = bytes;
+            documentTemplateTitle = data?.TemplateTitle ?? "";
             foreach (var view in views)
             {
                 var grid = new Grid { Width = view.Width, Height = view.Height, Background = Brushes.White, AllowDrop = true, Tag = view.Canvas };
@@ -199,6 +213,7 @@ public partial class MainWindow : Window
     }
     private DocumentData Capture() => new()
     {
+        TemplateTitle = documentTemplateTitle,
         Pages = views.Select(view => view.Canvas.Children.OfType<TextBox>().Where(box => !string.IsNullOrWhiteSpace(box.Text)).Select(box => new TextData
         {
             Text = box.Text.ReplaceLineEndings("\r\n"), X = InkCanvas.GetLeft(box), Y = InkCanvas.GetTop(box), Width = box.Width, Height = box.Height, FontSize = box.FontSize, FontFamily = box.FontFamily.Source, ColorHex = ((SolidColorBrush)box.Foreground).Color.ToString()
