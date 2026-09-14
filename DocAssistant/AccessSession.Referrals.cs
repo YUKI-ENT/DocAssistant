@@ -26,6 +26,7 @@ internal sealed partial class AccessSession
             $"GROUP BY Trim([{field}]) ORDER BY Count(*) DESC, Trim([{field}]);";
     }
 
+    internal const string ReferralDiagnosesSql = "SELECT [傷病名] FROM [紹介傷病名リスト] WHERE [傷病名] Is Not Null;";
     internal const string ReferralPurposesSql = "SELECT [紹介目的] FROM [紹介目的リスト] WHERE [紹介目的] Is Not Null;";
     internal const string ReferralTemplatesSql = "SELECT [コメントコード], [コメント区分コード], [コメント] FROM [紹介状コメントリスト] WHERE [コメント区分コード] = 13 ORDER BY [コメントコード];";
 
@@ -68,6 +69,7 @@ internal sealed partial class AccessSession
                     return [];
                 }
             }
+            var diagnoses = ReadList(ReferralDiagnosesSql, "傷病名", "紹介傷病名リスト");
             var purposes = ReadList(ReferralPurposesSql, "紹介目的", "紹介目的リスト");
             var templates = ReadList(ReferralTemplatesSql, "コメント", "紹介状コメントリスト");
             MedicationHistory? medication = null;
@@ -77,7 +79,7 @@ internal sealed partial class AccessSession
                 choicesStatus += " 投薬履歴を取得できませんでした。再取得してください。";
             }
             VerifyReferralPatient(app, patient);
-            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus, purposes, templates, medication);
+            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus, purposes, templates, medication, diagnoses);
         }
         finally { Release(app); }
     });

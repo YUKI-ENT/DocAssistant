@@ -29,7 +29,7 @@ internal sealed record ReferralSuggestion(string Value, long Count)
 internal sealed record ReferralChoices(IReadOnlyList<ReferralSuggestion> Destinations1,
     IReadOnlyList<ReferralSuggestion> Destinations2, IReadOnlyList<ReferralSuggestion> Doctors);
 internal sealed record ReferralHistory(IReadOnlyList<ReferralLetter> Letters, ReferralChoices? Choices, string ChoicesStatus,
-    IReadOnlyList<string>? Purposes = null, IReadOnlyList<string>? Templates = null, MedicationHistory? Medication = null);
+    IReadOnlyList<string>? Purposes = null, IReadOnlyList<string>? Templates = null, MedicationHistory? Medication = null, IReadOnlyList<string>? Diagnoses = null);
 
 internal sealed record ReferralPrescription(string DateLabel, string Content)
 {
@@ -48,7 +48,7 @@ internal sealed record ReferralPrescription(string DateLabel, string Content)
             .Select(day => new ReferralPrescription(day.Key,
                 string.Join("\r\n", day.Rows!.GroupBy(row => (row.Visit, row.Number))
                     .SelectMany(group => group.OrderBy(row => row.Order))
-                    .Select(row => $"{row.Name}　数量：{row.Quantity}")
+                    .Select(row => $"{row.Name}　{row.Quantity}{row.Unit}")
                     .SelectMany(text => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
                     .Where(line => !line.Contains("処方箋", StringComparison.Ordinal) && !line.Contains("一般名", StringComparison.Ordinal)))))
             .Where(prescription => !string.IsNullOrWhiteSpace(prescription.Content)).ToArray();

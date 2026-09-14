@@ -52,7 +52,7 @@ internal sealed partial class AccessSession
             var where = draft.Number is long id
                 ? $"[紹介番号] = {id.ToString(CultureInfo.InvariantCulture)} AND [カルテ番号] = {draft.ChartNumber.ToString(CultureInfo.InvariantCulture)}"
                 : $"[カルテ番号] = {draft.ChartNumber.ToString(CultureInfo.InvariantCulture)}";
-            records = AccessDispatch.Call(database, "OpenRecordset", "SELECT * FROM [紹介状] WHERE " + where + ";", 2);
+            records = Step("紹介状テーブルを更新用に開く", () => AccessDispatch.Call(database, "OpenRecordset", "SELECT * FROM [紹介状] WHERE " + where + ";", 2));
             fields = AccessDispatch.Get(records, "Fields");
             if (draft.Number == null)
             {
@@ -65,6 +65,16 @@ internal sealed partial class AccessSession
                         throw new InvalidOperationException("紹介番号には長整数型（オートナンバーではない）が必要です。");
                 }
                 finally { Release(numberField); }
+                object? chartField = null;
+                try
+                {
+                    chartField = AccessDispatch.Get(fields, "Item", "カルテ番号");
+                    if (Convert.ToInt32(AccessDispatch.Get(chartField, "Type")) != 4)
+                        throw new InvalidOperationException("カルテ番号には長整数型が必要です。テーブル定義を確認してください。");
+                    if (draft.ChartNumber < 0 || draft.ChartNumber > int.MaxValue)
+                        throw new InvalidOperationException("カルテ番号がAccessの長整数型の範囲を超えています。");
+                }
+                finally { Release(chartField); }
                 EnsureUniqueReferralNumber(database);
             }
             else if (Convert.ToBoolean(AccessDispatch.Get(records, "EOF")))
@@ -93,18 +103,19 @@ internal sealed partial class AccessSession
             int? newNumber = draft.Number == null ? ReadNextReferralNumber(database) : null;
             verifySession?.Invoke();
             AccessDispatch.Set(records, "LockEdits", true);
-            AccessDispatch.Call(records, draft.Number == null ? "AddNew" : "Edit"); editing = true;
+            Step("紹介状の編集開始", () => AccessDispatch.Call(records, draft.Number == null ? "AddNew" : "Edit")); editing = true;
             if (draft.Number != null && ReadCurrentReferral(fields) != baseline)
                 throw new InvalidOperationException("取得後に紹介状が変更されています。上書きせず中止しました。再取得して内容を確認してください。");
             if (draft.Number == null)
             {
-                changes["カルテ番号"] = draft.ChartNumber;
+                // DAO dbLong needs a COM VT_I4 value, not the model's Int64 (VT_I8).
+                changes["カルテ番号"] = checked((int)draft.ChartNumber);
                 changes["紹介番号"] = newNumber;
             }
             foreach (var (name, value) in changes)
             {
                 object? field = null;
-                try { field = AccessDispatch.Get(fields, "Item", name); AccessDispatch.Set(field, "Value", value); }
+                try { field = AccessDispatch.Get(fields, "Item", name); Step("紹介状フィールドの設定：" + name, () => { AccessDispatch.Set(field, "Value", value); return true; }); }
                 finally { Release(field); }
             }
             VerifyReferralPatient(app, patient);
@@ -113,6 +124,7 @@ internal sealed partial class AccessSession
             try { AccessDispatch.Call(records, "Update"); }
             catch (COMException ex) when (draft.Number == null && IsDuplicateReferralNumber(app, ex))
             { throw new ReferralNumberConflictException(ex); }
+            catch (COMException ex) { throw new AccessOperationException("紹介状のUpdate（登録・更新）", ex); }
             editing = false;
             AccessDispatch.Set(records, "Bookmark", AccessDispatch.Get(records, "LastModified"));
             var saved = ReadCurrentReferral(fields);

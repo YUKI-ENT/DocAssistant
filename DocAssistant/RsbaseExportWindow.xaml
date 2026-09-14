@@ -4,8 +4,8 @@
 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="キャンセル" IsCancel="True"/><Button Content="保存先へ進む" IsDefault="True" Click="Accept" Style="{StaticResource Primary}"/></StackPanel>
 <StackPanel>
 <TextBlock Text="RSBaseに登録するファイル名" FontSize="21" FontWeight="SemiBold" Margin="0,0,0,12"/>
-<TextBlock Text="ID（枝番なし・表示中のカルテから初期入力）" Style="{StaticResource Label}"/><TextBox x:Name="PatientId" TextChanged="Changed"/>
-<TextBlock Text="任意の連番（例：0001）" Style="{StaticResource Label}" Margin="0,10,0,3"/><TextBox x:Name="Sequence" Text="0001" TextChanged="Changed"/>
+<TextBlock Text="ID（枝番なし・表示中のカルテから初期入力）" Style="{StaticResource Label}"/><TextBox x:Name="PatientId" InputMethod.PreferredImeState="Off" TextChanged="Changed"/>
+<TextBlock Text="任意の連番（例：0001）" Style="{StaticResource Label}" Margin="0,10,0,3"/><TextBox x:Name="Sequence" InputMethod.PreferredImeState="Off" Text="0001" TextChanged="Changed"/>
 <TextBlock Text="日付" Style="{StaticResource Label}" Margin="0,10,0,3"/><DatePicker x:Name="OutputDate" SelectedDateChanged="DateChanged"/>
 <TextBlock Text="登録名（テンプレートタイトル）" Style="{StaticResource Label}" Margin="0,10,0,3"/><TextBox x:Name="RegistrationTitle" TextChanged="Changed"/>
 <TextBlock x:Name="Preview" TextWrapping="Wrap" Foreground="#087F8C" Margin="0,16,0,0"/>

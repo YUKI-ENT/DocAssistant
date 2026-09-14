@@ -11,6 +11,7 @@ public partial class App : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
+        ImeDefaults.Initialize();
         LifecycleLog.Write("Startup");
         Dispatcher.ShutdownStarted += (_, _) => LifecycleLog.Write("Dispatcher.ShutdownStarted");
         Dispatcher.ShutdownFinished += (_, _) => LifecycleLog.Write("Dispatcher.ShutdownFinished");

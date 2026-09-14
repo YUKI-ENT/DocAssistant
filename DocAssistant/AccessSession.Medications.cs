@@ -5,7 +5,7 @@ namespace DocAssistant;
 
 internal sealed record MedicationDay(string Key, string Header, string Text, string Notes = "", string Instructions = "", IReadOnlyList<MedicationRow>? Rows = null);
 internal sealed record MedicationHistory(string PatientKey, string Status, IReadOnlyList<MedicationDay> Days);
-internal sealed record MedicationRow(DateTime? Date, string Visit, long Number, decimal Order, string Name, string Quantity);
+internal sealed record MedicationRow(DateTime? Date, string Visit, long Number, decimal Order, string Name, string Quantity, string Unit = "");
 
 internal sealed partial class AccessSession
 {
@@ -47,7 +47,7 @@ internal sealed partial class AccessSession
         var sql = MedicationSql(id);
         sql = category switch
         {
-            "投薬" => sql,
+            "投薬" => sql.Replace("M.[数量],", "M.[数量], M.[区分],"),
             "処置" => sql.Replace("[受診投薬]", "[受診処置手術]").Replace("M.[薬名]", "M.[行為名] AS [薬名]"),
             "検査" => sql.Replace("[受診投薬]", "[受診検査]").Replace("M.[薬名]", "M.[検査項目名] AS [薬名]"),
             "注射" => sql.Replace("[受診投薬]", "[受診注射]"),
@@ -123,7 +123,8 @@ internal sealed partial class AccessSession
                             Convert.ToString(Read("受診コード")) ?? "", patient,
                             order == null ? decimal.MinValue : Convert.ToDecimal(order),
                             (string.IsNullOrWhiteSpace(name) ? "薬名未登録" : name).ReplaceLineEndings("\r\n"),
-                            quantity == null ? "未登録" : Convert.ToString(quantity, CultureInfo.InvariantCulture) ?? "未登録"));
+                            quantity == null ? "未登録" : Convert.ToString(quantity, CultureInfo.InvariantCulture) ?? "未登録",
+                            indices.ContainsKey("区分") ? (Convert.ToString(Read("区分")) ?? "").Trim() : ""));
                     }
                 }
             }

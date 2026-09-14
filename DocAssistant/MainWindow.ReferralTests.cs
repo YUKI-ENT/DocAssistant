@@ -11,7 +11,16 @@ public sealed class FakeReferralField(FakeReferralRecord record, string name)
     public int Attributes => name == "紹介番号" && record.AutoNumber ? 16 : 0;
     public int Type => name is "紹介番号" or "カルテ番号" ? 4 : name == "日付" ? 8 : name.StartsWith("紹介先") ? 10 : 12;
     public int Size => 255;
-    public object? Value { get => record.Values[name]; set => record.Values[name] = value; }
+    public object? Value
+    {
+        get => record.Values[name];
+        set
+        {
+            if (name is "カルテ番号" or "紹介番号" && value is not int)
+                throw new COMException("DAO long integer requires VT_I4", unchecked((int)0x800A0D62));
+            record.Values[name] = value;
+        }
+    }
 }
 public sealed class FakeReferralFields(FakeReferralRecord record)
 {
@@ -173,6 +182,7 @@ public partial class MainWindow
             Check(app.Database.Sql.Contains("[紹介番号] = 80 AND [カルテ番号] = 12341"), "Update targets one exact ID and branch");
             var addedRecords = new FakeReferralRecord(Row(baseline));
             var added = AccessSession.SaveReferralRecord(new FakeReferralApp(addedRecords), patient, copy, copy);
+            Check(addedRecords.Saved["カルテ番号"] is int && addedRecords.Saved["紹介番号"] is int, "DAO numeric fields receive 32-bit integers");
             Check(added.Number == 901 && added.ChartNumber == 12345 && addedRecords.Updates == 1, "New record receives global MAX + 1");
             var emptyRecords = new FakeReferralRecord(Row(baseline)); var emptyApp = new FakeReferralApp(emptyRecords);
             emptyApp.Database.Maximum = DBNull.Value;
@@ -225,6 +235,26 @@ public partial class MainWindow
             Rejected(failure, new(failure), baseline, draft, "Update failure preserves original");
             Check(Equals(failure.Saved["紹介目的"], baseline.Purpose) && failure.Cancels == 1 && failure.Closed, "Failed write leaves no staged edit");
 
+            currentReferralPatient = editingReferralPatient = patient;
+            DisplayReferral(baseline, 0);
+            NewReferral(this, new RoutedEventArgs());
+            ReferralTests.Text = "新規保存のボタン経由テスト";
+            Check(referralDirty && ReferralSave.IsEnabled, "New draft enables actual save button");
+            ReferralStatus.Text = "";
+            ReferralSave.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(ReferralStatus.Text.Contains("接続") && referralDirty && referralBaseline!.Number == null,
+                "Actual save click reports unavailable Access and preserves new draft");
+            currentReferralPatient = null;
+            await SaveOrOpenReferralAsync(false);
+            Check(ReferralStatus.Text.Contains("一致していません") && referralDirty, "Patient mismatch explains why save did not run");
+            currentReferralPatient = patient;
+            referralSaveUncertain = true;
+            await SaveOrOpenReferralAsync(false);
+            Check(ReferralStatus.Text.Contains("未確認") && referralDirty, "Uncertain save explains why retry is blocked");
+            referralSaveUncertain = false;
+            DisplayReferral(baseline, 0);
+            await SaveOrOpenReferralAsync(false);
+            Check(ReferralStatus.Text.Contains("保存済み"), "Clean save click gives feedback");
             var opener = new FakeReferralApp(new FakeReferralRecord(Row(baseline)));
             AccessSession.OpenReferralForm(opener, patient, baseline);
             Check(opener.OpenCalls == 1 && opener.SelectCalls == 1 && opener.OpenWhere == "[紹介番号] = 80 AND [カルテ番号] = 12341", "Open form uses exact saved number and branch");
@@ -250,20 +280,33 @@ public partial class MainWindow
             DisplayReferral(baseline, 0); WorkspaceTabs.SelectedItem = ReferralTab;
             MoveReferral(1); Check(referralBaseline?.Number == 70 && ReferralNewer.IsEnabled, "Previous/next history navigation");
             MoveReferral(-1); Check(referralBaseline == baseline && !referralDirty, "Navigation returns clean baseline");
+            var unitHistory = AccessSession.ReadMedicationRecords(new FakeNoteRecords(new Dictionary<string, object?>
+            {
+                ["受診日"] = new DateTime(2026, 8, 1), ["受診コード"] = "unit", ["カルテ番号"] = 12345,
+                ["受診患者番号"] = 12345, ["順番"] = 1, ["薬名"] = "単位テスト薬", ["数量"] = 2, ["区分"] = "錠"
+            }), 12345);
+            Check(ReferralPrescription.FromHistory(unitHistory)[0].Content == "単位テスト薬　2錠", "DAO unit field reaches prescription content");
             var medicationDate = new DateTime(2026, 8, 1);
             var longDrug = "架空薬剤" + new string('長', 90);
             var prescriptions = ReferralPrescription.FromHistory(new("1234", "", [
                 new("2026/07/01", "", "", Rows: [new(medicationDate.AddMonths(-1), "old", 12345, 1, "以前の薬", "1")]),
-                new("2026/08/01", "", "", Rows: [new(medicationDate, "latest", 12345, 2, longDrug, "2"), new(medicationDate, "latest", 12345, 1, "架空薬A", "1")]) ]));
+                new("2026/08/01", "", "", Rows: [new(medicationDate, "latest", 12345, 2, longDrug, "2"), new(medicationDate, "latest", 12345, 1, "架空薬A", "1", "錠")]) ]));
             Check(prescriptions.Count == 2 && prescriptions[0].DateLabel == "2026/08/01" && prescriptions[0].Label.EndsWith("…"), "Prescription choices are newest first with abbreviated preview");
             Check(prescriptions[0].Content.StartsWith("架空薬A") && prescriptions[0].Text.Contains(longDrug), "Prescription preserves complete medication content and row order");
+            Check(prescriptions[0].Content.Contains("架空薬A　1錠") && !prescriptions[0].Content.Contains("数量："), "Prescription includes unit without quantity label");
             ReferralMedication.ItemsSource = prescriptions;
             Check(!ReferralAddMedication.IsEnabled, "Prescription append needs a selection");
             ReferralMedication.SelectedIndex = 0;
             Check(!referralDirty && ReferralAddMedication.IsEnabled, "Selecting a prescription does not alter draft");
             ReferralTests.Text = "既存の検査本文";
             AddReferralMedication(this, new RoutedEventArgs());
-            Check(ReferralTests.Text == "既存の検査本文\r\n" + prescriptions[0].Text + "\r\n" && referralDirty, "Append full dated prescription without overwriting existing text");
+            Check(ReferralTests.Text == "既存の検査本文\r\n\r\n" + prescriptions[0].Text + "\r\n" && referralDirty, "Append full dated prescription without overwriting existing text");
+            foreach (var ending in new[] { "\r\n", "\r\n\r\n" })
+            {
+                ReferralTests.Text = "既存" + ending;
+                AddReferralMedication(this, new RoutedEventArgs());
+                Check(ReferralTests.Text == "既存\r\n\r\n" + prescriptions[0].Text + "\r\n", "Prescription keeps one blank separator with existing newline");
+            }
             ReferralTests.Text = "";
             AddReferralMedication(this, new RoutedEventArgs());
             Check(ReferralTests.Text == prescriptions[0].Text + "\r\n", "Empty test field has no leading blank line");
@@ -272,7 +315,7 @@ public partial class MainWindow
                 new("2026/08/01", "", "", Rows: [new(medicationDate, "a", 12345, 1, "処方箋料", "1"),
                     new(medicationDate, "a", 12345, 2, "一般名処方加算", "1"), new(medicationDate, "a", 12345, 3, "残す薬", "2")]),
                 new("2026/07/01", "", "", Rows: [new(medicationDate.AddMonths(-1), "b", 12345, 1, "処方箋料", "1")]) ]));
-            Check(filtered.Count == 1 && filtered[0].Content == "残す薬　数量：2", "Exclude prescription fees and generic-name additions; omit empty days");
+            Check(filtered.Count == 1 && filtered[0].Content == "残す薬　2", "Exclude prescription fees and generic-name additions; omit empty days");
             var firstLine = new FirstLineConverter();
             foreach (var newline in new[] { "\r\n", "\n", "\r" })
                 Check((string)firstLine.Convert("先頭行" + newline + "続き", typeof(string), null!, System.Globalization.CultureInfo.InvariantCulture) == "先頭行", "Template preview uses only first line");
@@ -280,6 +323,13 @@ public partial class MainWindow
             ReferralTests.Text = "";
             InsertReferralTemplate(new System.Windows.Controls.Button { Tag = "End" }, new RoutedEventArgs());
             Check(ReferralTests.Text == "先頭行\r\n続き", "Template insertion retains all lines");
+            DisplayReferral(baseline, 0);
+            ReferralDiagnosis.ItemsSource = new[] { "候補傷病名" };
+            ReferralDiagnosis.SelectedIndex = 0;
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Check(CaptureReferral().Diagnosis == "候補傷病名" && referralDirty, "Diagnosis selection updates draft");
+            ReferralDiagnosis.Text = "自由入力の傷病名";
+            Check(CaptureReferral().Diagnosis == "自由入力の傷病名", "Diagnosis supports free text");
             ReferralPurpose.ItemsSource = new[] { "精査", "加療" };
             ReferralPurpose.SelectedIndex = 0;
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
@@ -300,7 +350,7 @@ public partial class MainWindow
             ReferralPurpose.Text = "編集途中の下書き";
             Check(referralDirty && ReferralSave.IsEnabled, "Editing enables save");
             TrackReferralPatient(new(true, "", "氏名：別の患者\r\nカルテ番号：99999", DatabasePath: patient.DatabasePath));
-            Check(referralDirty && ReferralPurpose.Text == "編集途中の下書き" && !ReferralSave.IsEnabled && ReferralPatientWarning.Visibility == Visibility.Visible,
+            Check(referralDirty && ReferralPurpose.Text == "編集途中の下書き" && ReferralSave.IsEnabled && ReferralPatientWarning.Visibility == Visibility.Visible,
                 "Patient switch preserves draft and blocks wrong-patient save");
             var testsBefore = ReferralTests.Text;
             AddReferralMedication(this, new RoutedEventArgs());

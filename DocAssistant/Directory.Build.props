@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Release date: update this value for each release (YYYYMMDD). -->
-    <ReleaseDate>20260913</ReleaseDate>
+    <ReleaseDate>20260914</ReleaseDate>
     <VersionYear>$([System.String]::Copy('$(ReleaseDate)').Substring(0, 4))</VersionYear>
     <VersionMonth>$([System.Int32]::Parse($([System.String]::Copy('$(ReleaseDate)').Substring(4, 2))))</VersionMonth>
     <VersionDay>$([System.Int32]::Parse($([System.String]::Copy('$(ReleaseDate)').Substring(6, 2))))</VersionDay>
