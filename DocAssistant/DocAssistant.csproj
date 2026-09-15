@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -14,7 +14,20 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <PublishDir>$(MSBuildProjectDirectory)\..\publish\DocAssistant\</PublishDir>
+    <PackageIcon>DocAssistant.png</PackageIcon>
+    <ApplicationIcon>DocAssistant2.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="DocAssistant2.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\DocAssistant.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="PDFsharp" Version="6.2.4" />

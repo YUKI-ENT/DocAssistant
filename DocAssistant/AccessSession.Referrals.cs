@@ -78,8 +78,15 @@ internal sealed partial class AccessSession
             {
                 choicesStatus += " 投薬履歴を取得できませんでした。再取得してください。";
             }
+            IReadOnlyDictionary<long, string>? prescriptions = null;
+            string prescriptionStatus = "";
+            try { prescriptions = ParseReferralPrescriptions(ReadReferralQuery(app, ReferralPrescriptionSql(patient.ChartNumber)), letters); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                prescriptionStatus = "紹介状に保存された処方を取得できません。紹介状追加テーブルを確認して再取得してください。";
+            }
             VerifyReferralPatient(app, patient);
-            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus, purposes, templates, medication, diagnoses);
+            return new ReferralHistory(letters, cachedReferralChoices, choicesStatus, purposes, templates, medication, diagnoses, prescriptions, prescriptionStatus);
         }
         finally { Release(app); }
     });

@@ -13,6 +13,8 @@ public partial class MainWindow
     private bool changingReferral, referralDirty, referralBusy, referralLoaded, referralSaveUncertain;
     private long referralPatientVersion;
     private string referralAttention = "";
+    private IReadOnlyDictionary<long, string>? referralSavedPrescriptions;
+    private string referralSavedPrescriptionsStatus = "";
 
     private void TrackReferralPatient(AccessPatientDisplay display)
     {
@@ -83,6 +85,8 @@ public partial class MainWindow
             if (chartSession == null || chartSession.MonitorTimedOut) throw new InvalidOperationException("カルテ情報の「再取得」でAccessに接続してください。");
             var history = await chartSession.ReadReferralsAsync(patient, refreshChoices);
             if (chartClosed || version != referralPatientVersion) { ReferralStatus.Text = "取得中に患者が変わりました。再取得してください。"; return; }
+            referralSavedPrescriptions = history.SavedPrescriptions;
+            referralSavedPrescriptionsStatus = history.SavedPrescriptionsStatus;
             referralLetters = history.Letters; editingReferralPatient = patient; referralLoaded = true; referralSaveUncertain = false;
             changingReferral = true;
             try
@@ -116,6 +120,11 @@ public partial class MainWindow
         try
         {
             referralBaseline = letter; referralIndex = index;
+            ReferralSavedPrescription.Text = letter?.Number is long savedId
+                ? !string.IsNullOrEmpty(referralSavedPrescriptionsStatus) ? referralSavedPrescriptionsStatus
+                    : referralSavedPrescriptions?.TryGetValue(savedId, out var savedText) == true && !string.IsNullOrWhiteSpace(savedText)
+                        ? savedText : "この紹介状に登録された処方はありません。"
+                : "新規の紹介状には、別途保存された処方はありません。";
             ReferralDate.SelectedDate = letter?.Date;
             ReferralDestination1.Text = letter?.Destination1 ?? ""; ReferralDestination2.Text = letter?.Destination2 ?? "";
             ReferralDoctor.Text = letter?.Doctor ?? ""; ReferralDiagnosis.Text = letter?.Diagnosis ?? "";

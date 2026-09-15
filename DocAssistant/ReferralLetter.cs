@@ -29,7 +29,8 @@ internal sealed record ReferralSuggestion(string Value, long Count)
 internal sealed record ReferralChoices(IReadOnlyList<ReferralSuggestion> Destinations1,
     IReadOnlyList<ReferralSuggestion> Destinations2, IReadOnlyList<ReferralSuggestion> Doctors);
 internal sealed record ReferralHistory(IReadOnlyList<ReferralLetter> Letters, ReferralChoices? Choices, string ChoicesStatus,
-    IReadOnlyList<string>? Purposes = null, IReadOnlyList<string>? Templates = null, MedicationHistory? Medication = null, IReadOnlyList<string>? Diagnoses = null);
+    IReadOnlyList<string>? Purposes = null, IReadOnlyList<string>? Templates = null, MedicationHistory? Medication = null, IReadOnlyList<string>? Diagnoses = null,
+    IReadOnlyDictionary<long, string>? SavedPrescriptions = null, string SavedPrescriptionsStatus = "");
 
 internal sealed record ReferralPrescription(string DateLabel, string Content)
 {

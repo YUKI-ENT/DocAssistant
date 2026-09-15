@@ -159,6 +159,27 @@ public partial class MainWindow
             {
                 var row = letter.Values(); row["紹介番号"] = letter.Number; row["カルテ番号"] = letter.ChartNumber; return row;
             }
+            Dictionary<string, object?> Extra(string? drugs)
+            {
+                var row = new Dictionary<string, object?> { ["紹介番号"] = baseline.Number, ["カルテ番号"] = baseline.ChartNumber, ["drg"] = drugs };
+                for (int i = 1; i <= 10; i++) { row[$"dr{i}"] = null; row[$"ds{i}"] = null; row[$"dt{i}"] = null; }
+                for (int i = 0; i < 15; i++) { row[$"ill{i}"] = null; row[$"itm{i}"] = null; }
+                return row;
+            }
+            var extra = Extra("保存薬A,2,錠\r\n保存薬B,1,包");
+            var savedPrescriptions = AccessSession.ParseReferralPrescriptions([extra], [baseline]);
+            Check(savedPrescriptions[80] == "保存薬A　2錠\r\n保存薬B　1包", "New-format saved prescription restores quantity/unit in order");
+            var legacy = Extra("新形式は使用しない,9,錠"); legacy["dr1"] = "旧薬"; legacy["ds1"] = 3; legacy["dt1"] = "錠";
+            Check(AccessSession.ParseReferralPrescriptions([legacy], [baseline])[80] == "旧薬　3錠", "Old fields take precedence");
+            legacy = Extra("混ぜない,9,錠"); legacy["ill0"] = "旧形式の病歴";
+            Check(AccessSession.ParseReferralPrescriptions([legacy], [baseline])[80] == "", "Old disease fields also select old format");
+            Check(AccessSession.ParseReferralPrescriptions([Extra(null)], [baseline])[80] == "", "Empty stored prescription");
+            Check(AccessSession.ParseReferralPrescriptions([Extra("薬名,補足,錠\n壊れた,データ,は,そのまま")], [baseline])[80].Contains("壊れた,データ,は,そのまま"), "Ambiguous source text is not discarded");
+            extra["カルテ番号"] = 99999;
+            bool extraRejected = false;
+            try { AccessSession.ParseReferralPrescriptions([extra], [baseline]); } catch (InvalidOperationException) { extraRejected = true; }
+            Check(extraRejected, "Saved prescription validates exact patient identity");
+            referralSavedPrescriptions = savedPrescriptions;
             var patient = new ReferralPatient(@"D:\Clinical\client.mdb", 12345, "動作確認 太郎（架空）");
             Check(AccessSession.ReferralSql(12345).Contains(">= 12340") && AccessSession.ReferralSql(12345).Contains("< 12350"), "All branches use a numeric range");
             Check(AccessSession.ReferralSql(long.MaxValue).Contains("9223372036854775810"), "Range upper bound does not overflow");
@@ -278,7 +299,10 @@ public partial class MainWindow
             ReferralDestination2.ItemsSource = new[] { new ReferralSuggestion("内科", 24), new ReferralSuggestion("外科", 10) };
             ReferralDoctor.ItemsSource = new[] { new ReferralSuggestion("テスト医師", 20) };
             DisplayReferral(baseline, 0); WorkspaceTabs.SelectedItem = ReferralTab;
-            MoveReferral(1); Check(referralBaseline?.Number == 70 && ReferralNewer.IsEnabled, "Previous/next history navigation");
+            Check(ReferralSavedPrescription.IsReadOnly && ReferralSavedPrescription.Text.Contains("保存薬A") && !referralDirty, "Saved prescription is read-only and does not alter draft");
+            MoveReferral(1);
+            Check(!ReferralSavedPrescription.Text.Contains("保存薬A"), "History navigation clears another letter prescription");
+            Check(referralBaseline?.Number == 70 && ReferralNewer.IsEnabled, "Previous/next history navigation");
             MoveReferral(-1); Check(referralBaseline == baseline && !referralDirty, "Navigation returns clean baseline");
             var unitHistory = AccessSession.ReadMedicationRecords(new FakeNoteRecords(new Dictionary<string, object?>
             {
@@ -359,7 +383,9 @@ public partial class MainWindow
             AddReferralAttention(this, new RoutedEventArgs());
             Check(ReferralRemarks.Text == remarksBefore && !ReferralAddAttention.IsEnabled, "Different patient attention cannot enter draft");
             currentReferralPatient = patient; DisplayReferral(baseline, 0);
-            CopyReferral(this, new RoutedEventArgs()); Check(referralDirty && referralBaseline is { Number: null } && referralBaseline.ChartNumber == patient.ChartNumber, "Copy button creates local draft");
+            CopyReferral(this, new RoutedEventArgs());
+            Check(!ReferralSavedPrescription.Text.Contains("保存薬A"), "Copy as new does not inherit separate stored prescriptions");
+            Check(referralDirty && referralBaseline is { Number: null } && referralBaseline.ChartNumber == patient.ChartNumber, "Copy button creates local draft");
             DisplayReferral(baseline, 0); ReferralStatus.Text = "動作確認用の架空データです。Accessへの接続・保存は行っていません。";
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             ReferralScroll.ScrollToTop(); UpdateLayout();

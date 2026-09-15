@@ -1,4 +1,4 @@
-<Window x:Class="DocAssistant.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DocAssistant" Title="DocAssistant — ハイブリッド記入" Width="1740" Height="940" MinWidth="1380" MinHeight="700" Closing="OnClosing" PreviewKeyDown="EditorKeyDown">
+<Window x:Class="DocAssistant.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DocAssistant" Title="DocAssistant — ダイナミクス文書作成支援" Width="1740" Height="940" MinWidth="1380" MinHeight="700" Closing="OnClosing" PreviewKeyDown="EditorKeyDown" Icon="pack://application:,,,/DocAssistant;component/DocAssistant2.ico">
 <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Theme.xaml"/></ResourceDictionary.MergedDictionaries><local:FirstLineConverter x:Key="FirstLineConverter"/><DataTemplate x:Key="ReferralSuggestionTemplate"><StackPanel Orientation="Horizontal"><TextBlock Text="{Binding Value}"/><TextBlock Text="{Binding Count, StringFormat={}  （{0}件）}" Foreground="#64748B" FontSize="11" VerticalAlignment="Center"/></StackPanel></DataTemplate></ResourceDictionary></Window.Resources>
 <DockPanel Background="#F3F5F8">
 <Border DockPanel.Dock="Top" Background="#14263D" Padding="23,16"><DockPanel>
@@ -195,6 +195,11 @@
 <TextBox x:Name="ReferralTests" AcceptsReturn="True" TextWrapping="Wrap" Height="280" VerticalScrollBarVisibility="Auto" TextChanged="ReferralChanged" Margin="0,0,0,14"/>
 <StackPanel Orientation="Horizontal"><TextBlock Text="備考" Style="{StaticResource Label}" FontSize="16" TextWrapping="Wrap" VerticalAlignment="Center"/><Button x:Name="ReferralAddAttention" Content="注意リスト追加" Click="AddReferralAttention" Margin="12,0,0,4"/></StackPanel><TextBox x:Name="ReferralRemarks" AcceptsReturn="True" TextWrapping="Wrap" Height="66" VerticalScrollBarVisibility="Auto" TextChanged="ReferralChanged" Margin="0,0,0,14"/>
 <TextBlock Text="検査結果" Style="{StaticResource Label}" FontSize="16" TextWrapping="Wrap"/><TextBox x:Name="ReferralTestResults" AcceptsReturn="True" TextWrapping="Wrap" Height="66" VerticalScrollBarVisibility="Auto" TextChanged="ReferralChanged" Margin="0,0,0,14"/>
+<Expander Header="この紹介状に登録された処方（読み取り専用）" IsExpanded="True" Margin="0,0,0,14">
+<StackPanel Margin="0,6,0,0"><TextBlock Text="過去の紹介状に保存された薬名・数量・単位です。処方日は保存されていません。" FontSize="14" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,6"/>
+<TextBox x:Name="ReferralSavedPrescription" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="66" MaxHeight="200" VerticalScrollBarVisibility="Auto" Background="#EEF2F6"/>
+</StackPanel></Expander>
+
 </StackPanel></StackPanel></ScrollViewer>
 </DockPanel></TabItem>
 <TabItem Header="診断書作成"><Grid Background="#F3F5F8"><Border Background="White" BorderBrush="#DCE3EB" BorderThickness="1" CornerRadius="12" Padding="32" Margin="28" VerticalAlignment="Center" MaxWidth="520"><StackPanel><TextBlock Text="診断書作成" FontSize="24" Foreground="#14263D" FontWeight="SemiBold"/><TextBlock Text="準備中" Foreground="#087F8C" FontWeight="SemiBold" Margin="0,12,0,0"/><TextBlock Text="書式や必要事項に合わせて、診断書を作成する画面です。" TextWrapping="Wrap" Foreground="#64748B" Margin="0,16,0,0"/><TextBlock Text="文書生成・編集機能は今後追加予定です。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/></StackPanel></Border></Grid></TabItem>
