@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.10.12201.205 stable
+VisualStudioVersion = 18.10.12201.205
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocAssistant", "DocAssistant\DocAssistant.csproj", "{1B7C882E-7D15-4FEE-904F-E37D909712C8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ソリューション項目", "ソリューション項目", "{CF4D0051-AAD9-4213-B647-73B5678EE1C0}"
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
+		scripts\Publish-SingleFile.bat = scripts\Publish-SingleFile.bat
+		scripts\Test-Shutdown.ps1 = scripts\Test-Shutdown.ps1
 	EndProjectSection
 EndProject
 Global
