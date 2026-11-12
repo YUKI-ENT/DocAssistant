@@ -15,5 +15,21 @@
 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="PDFを追加" Click="AddTemplate"/><Button Content="登録を解除" Click="RemoveTemplate"/></StackPanel>
 <TextBlock Text="起動時に表示するテンプレート" Style="{StaticResource Label}" Margin="0,16,0,5"/><ComboBox x:Name="StartupTemplate" DisplayMemberPath="Name"/>
 <TextBlock Text="「表示しない」を選ぶと、起動後にテンプレートを選択できます。&#10;PDF本体は移動せず、ファイルの場所を登録します。" Foreground="#7D8A9D" FontSize="12" Margin="0,10,0,0"/>
+</StackPanel></ScrollViewer></TabItem>
+<TabItem Header="英文診断書"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="14">
+<TextBlock Text="診断書データの保存先" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
+<DockPanel><Button DockPanel.Dock="Right" Content="フォルダー選択…" Click="BrowseCertificateDatabase"/><TextBox x:Name="CertificateDatabasePath" TextWrapping="Wrap"/></DockPanel>
+<TextBlock Text="このPCのローカルドライブに入力内容・改訂履歴・発行時PDFを保存します。PDF出力先とは別です。場所を変更しても既存DBは移動しません。別のPCへ移す場合はバックアップと復元を使用してください。共有フォルダーへのDB直接配置には対応していません。" TextWrapping="Wrap" FontSize="12" Foreground="#64748B" Margin="0,8,0,24"/>
+<TextBlock Text="英文診断書のPDF出力" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
+<CheckBox x:Name="CertificateRsbaseNaming" Content="RSBase形式で保存" Margin="0,0,0,12"/>
+<TextBlock Text="検査名（RSBaseの登録名）" Style="{StaticResource Label}"/><TextBox x:Name="CertificateRegistrationTitle" Margin="0,0,0,12"/>
+<TextBlock Text="ID（枝番なし）~連番~YYYY_MM_DD~検査名~RSB.pdf&#10;出力時にID・連番・日付・検査名を確認・変更できます。連番の初期値は0001で、自動加算しません。出力先の初期フォルダーは「PDF編集」タブの「既定の保存先」と共通です。" TextWrapping="Wrap" FontSize="12" Foreground="#64748B" Margin="0,0,0,24"/>
+<TextBlock Text="英文診断書の医院情報（既定値）" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,16"/>
+<TextBlock Text="新規作成する診断書に反映します。作成済みの文書は診断書タブの「医院の既定情報を反映」で更新できます。" TextWrapping="Wrap" Foreground="#64748B" Margin="0,0,0,16"/>
+<TextBlock Text="英文医院名" Style="{StaticResource Label}"/><TextBox x:Name="ClinicName" Margin="0,0,0,16"/>
+<TextBlock Text="英文住所" Style="{StaticResource Label}"/><TextBox x:Name="ClinicAddress" AcceptsReturn="True" TextWrapping="Wrap" Height="90" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
+<TextBlock Text="連絡先（電話番号等）" Style="{StaticResource Label}"/><TextBox x:Name="ClinicContact" Margin="0,0,0,16"/>
+<TextBlock Text="英文医師名・資格" Style="{StaticResource Label}"/><TextBox x:Name="ClinicPhysician" Margin="0,0,0,16"/>
+<TextBlock Text="医院情報は各ページのフッター、医師名・署名欄は最終ページ下部の医院情報のすぐ上に出力します。" TextWrapping="Wrap" Foreground="#64748B"/>
 </StackPanel></ScrollViewer></TabItem></TabControl>
 </DockPanel></Window>

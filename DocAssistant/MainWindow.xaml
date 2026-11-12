@@ -79,6 +79,8 @@
 <TextBox x:Name="LlmAddress" InputMethod.PreferredImeState="Off"/>
 <Grid Margin="0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="ポート" Style="{StaticResource Label}"/><TextBox x:Name="LlmPort" InputMethod.PreferredImeState="Off" Margin="0,0,8,0"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="APIキー（任意・保存なし）" Style="{StaticResource Label}"/><PasswordBox x:Name="LlmKey" InputMethod.PreferredImeState="Off" Padding="8,6"/></StackPanel></Grid>
 <TextBlock Text="Ollama: 11434 / LM Studio: 1234" Foreground="#64748B" FontSize="11"/>
+<CheckBox x:Name="LlmDisableThinking" Content="thinkingを無効にする（対応モデル）" IsChecked="True" Margin="0,10,0,4"/>
+<TextBlock Text="ONで無効化を要求し、OFFではサーバーの既定動作を使います。英文診断書の生成にも適用します。" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
 <WrapPanel><Button Content="接続設定を保存" Click="SaveLlmSettings"/><Button Content="モデル取得" Click="LoadLlmModels"/></WrapPanel>
 </StackPanel></Border></Expander>
 <TextBlock Text="モデル一覧" Style="{StaticResource Label}"/><ComboBox x:Name="LlmModels"/>
@@ -101,6 +103,12 @@
 <WrapPanel Margin="0,8"><Button x:Name="LlmGenerate" Content="送信" Click="GenerateLlm" Style="{StaticResource Primary}"/><Button x:Name="LlmCancel" Content="中止" IsEnabled="False" Click="CancelLlm"/><Button Content="結果をコピー" Click="CopyLlmResult"/></WrapPanel>
 <TextBlock Text="生成結果（内容を確認して使用してください）" Style="{StaticResource Label}"/>
 <RichTextBox x:Name="LlmResult" IsReadOnly="True" MinHeight="180" MaxHeight="500" VerticalScrollBarVisibility="Auto"/>
+<StackPanel x:Name="LlmCertificateTransfer" Visibility="Collapsed" Margin="0,10,0,0">
+<TextBlock Text="英文診断書への取り込み先" Style="{StaticResource Label}"/>
+<ComboBox x:Name="LlmCertificateTarget" SelectedIndex="2"><ComboBoxItem Content="主診断"/><ComboBoxItem Content="合併症・併存疾患"/><ComboBoxItem Content="病状・経過"/><ComboBoxItem Content="治療・処方薬"/></ComboBox>
+<Button Content="生成結果を診断書へ取り込む" Click="ImportLlmResultToCertificate" Margin="0,6,0,0"/>
+<TextBlock Text="結果の選択部分を取り込みます。未選択なら結果全体が対象です。" FontSize="11" Foreground="#64748B" TextWrapping="Wrap" Margin="0,5,0,0"/>
+</StackPanel>
 </StackPanel></ScrollViewer>
 </DockPanel></Border>
 <Border x:Name="CollapsedLlmPane" Grid.Column="2" Visibility="Collapsed" Background="#F8FAFC" Padding="4,12">
@@ -202,7 +210,7 @@
 
 </StackPanel></StackPanel></ScrollViewer>
 </DockPanel></TabItem>
-<TabItem Header="診断書作成"><Grid Background="#F3F5F8"><Border Background="White" BorderBrush="#DCE3EB" BorderThickness="1" CornerRadius="12" Padding="32" Margin="28" VerticalAlignment="Center" MaxWidth="520"><StackPanel><TextBlock Text="診断書作成" FontSize="24" Foreground="#14263D" FontWeight="SemiBold"/><TextBlock Text="準備中" Foreground="#087F8C" FontWeight="SemiBold" Margin="0,12,0,0"/><TextBlock Text="書式や必要事項に合わせて、診断書を作成する画面です。" TextWrapping="Wrap" Foreground="#64748B" Margin="0,16,0,0"/><TextBlock Text="文書生成・編集機能は今後追加予定です。" Foreground="#64748B" TextWrapping="Wrap" Margin="0,8,0,0"/></StackPanel></Border></Grid></TabItem>
+<TabItem x:Name="CertificateTab" Header="英文診断書"/>
 </TabControl>
 </Grid>
 </Grid>

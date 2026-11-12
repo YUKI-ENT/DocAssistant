@@ -30,6 +30,19 @@ public partial class MainWindow
         var folder = Path.GetFullPath("tmp/llm-test"); Directory.CreateDirectory(folder);
         try
         {
+            int initialPrompt = LlmPrompts.SelectedIndex;
+            LlmMessage.Text = "手編集した送信文"; llmMessageUsesPatient = true;
+            LlmPrompts.SelectedIndex = initialPrompt == 0 ? 1 : 0;
+            Check(LlmMessage.Text == ((LlmPrompt)LlmPrompts.SelectedItem).Text && !llmMessageUsesPatient, "Selecting prompt updates send text and clears patient-derived provenance");
+            LlmMessage.Text = "一覧更新で保持する送信文"; llmMessageUsesPatient = true;
+            RefreshLlmPrompts(initialPrompt);
+            Check(LlmMessage.Text == "一覧更新で保持する送信文" && llmMessageUsesPatient, "Programmatic prompt refresh preserves manually edited send text and provenance");
+            LlmPrompts.SelectedIndex = -1;
+            Check(LlmMessage.Text == "一覧更新で保持する送信文", "Clearing selection does not erase send text");
+            LlmPrompts.SelectedIndex = initialPrompt;
+            Check(LlmMessage.Text == LlmPromptText.Text && !llmMessageUsesPatient, "Reselecting template restores its exact text");
+            Check(LlmDisableThinking.IsChecked == true && JsonSerializer.Deserialize<LlmSettings>("{}")!.DisableThinking, "Thinking disable defaults on for existing settings");
+            Check(!JsonSerializer.Deserialize<LlmSettings>(JsonSerializer.Serialize(new LlmSettings { DisableThinking = false }))!.DisableThinking, "Thinking disable off setting survives round trip");
             var endpoint = LlmClient.BaseUri("localhost", 11434);
             Check(endpoint.ToString() == "http://localhost:11434/v1/", "Ollama URL");
             Check(LlmClient.BaseUri("http://localhost/v1/", 1234).ToString() == "http://localhost:1234/v1/", "LM Studio URL");
@@ -48,6 +61,16 @@ public partial class MainWindow
             Check(handler.Uri?.AbsolutePath == "/v1/chat/completions" && handler.Authorization == "Bearer test-key", "Completion endpoint and authentication");
             Check(body.RootElement.GetProperty("messages")[1].GetProperty("content").GetString() == "所見" &&
                 body.RootElement.GetProperty("model").GetString() == "local-model" && !body.RootElement.GetProperty("stream").GetBoolean(), "OpenAI request body");
+            Check(!body.RootElement.TryGetProperty("reasoning_effort", out _), "Default client request does not override thinking");
+            await client.GenerateAsync(endpoint, "", "local-model", "要約", "所見", default, disableThinking: true);
+            using (var thinkingBody = JsonDocument.Parse(handler.Body!))
+                Check(thinkingBody.RootElement.GetProperty("reasoning_effort").GetString() == "none" && !thinkingBody.RootElement.TryGetProperty("think", out _) && thinkingBody.RootElement.GetProperty("messages").GetArrayLength() == 2, "Payload generation uses Ollama-compatible reasoning_effort none");
+            await client.GenerateAsync(endpoint, "", "local-model", "原文そのまま", null, default, disableThinking: true);
+            using (var thinkingChat = JsonDocument.Parse(handler.Body!))
+                Check(thinkingChat.RootElement.GetProperty("reasoning_effort").GetString() == "none" && thinkingChat.RootElement.GetProperty("messages")[0].GetProperty("content").GetString() == "原文そのまま", "Thinking switch preserves exact user text without hidden instructions");
+            await client.GenerateAsync(endpoint, "", "local-model", "要約", null, default, disableThinking: false);
+            using (var defaultThinking = JsonDocument.Parse(handler.Body!))
+                Check(!defaultThinking.RootElement.TryGetProperty("reasoning_effort", out _) && !defaultThinking.RootElement.TryGetProperty("think", out _), "Thinking off switch omits control fields rather than forcing thinking on");
             handler.Status = HttpStatusCode.Unauthorized;
             bool failed = false; try { await client.ModelsAsync(endpoint, "", default); } catch (InvalidOperationException ex) { failed = ex.Message.Contains("401"); }
             Check(failed, "HTTP failure reported");
@@ -115,7 +138,12 @@ public partial class MainWindow
                     messages[0].GetProperty("content").GetString() == LlmMessage.Text, "Chat sends only exact editable text, without payload or hidden template");
                 string ResultText() => new System.Windows.Documents.TextRange(LlmResult.Document.ContentStart, LlmResult.Document.ContentEnd).Text.Trim();
                 Check(ResultText() == "生成テスト" && !chartUpdateCompletion.Task.IsCompleted, "Chat ignores chart wait, dates, selection and patient switches");
+                Check(chatBody.RootElement.GetProperty("reasoning_effort").GetString() == "none", "Assistant UI thinking checkbox controls actual request");
                 handler.BeforeResponse = null;
+                LlmDisableThinking.IsChecked = false;
+                await RunLlm(token => SendLlmMessageAsync(token, client));
+                using (var offBody = JsonDocument.Parse(handler.Body!)) Check(!offBody.RootElement.TryGetProperty("reasoning_effort", out _), "Assistant checkbox off restores server default");
+                LlmDisableThinking.IsChecked = true;
                 handler.Status = HttpStatusCode.Unauthorized;
                 await RunLlm(token => SendLlmMessageAsync(token, client));
                 Check(ResultText() == "生成テスト" && LlmStatus.Text.Contains("401"), "Failed chat preserves prior result");
@@ -234,7 +262,7 @@ public partial class MainWindow
             LlmPayloadSettings.IsExpanded = false;
             LlmConnectionExpander.IsExpanded = true;
             RenderVisual(this, Path.Combine(folder, "connection.png"), 1740, 940);
-            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: endpoint, models, completion payload, authentication, HTTP errors, cancellation, settings, patient isolation, payload-free chat without Access, exact message, result reuse, failure retention, pane layout");
+            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: prompt selection updates send text; list refresh preserves edits; thinking checkbox default, settings roundtrip and exact ON/OFF request payloads; endpoint, models, authentication, HTTP errors, cancellation, patient isolation, payload-free chat without Access, exact message, result reuse, failure retention, pane layout");
         }
         catch (Exception ex) { File.WriteAllText(Path.Combine(folder, "result.txt"), ex.ToString()); Environment.ExitCode = 1; }
         finally { Close(); }

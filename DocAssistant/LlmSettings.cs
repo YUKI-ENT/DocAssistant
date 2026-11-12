@@ -12,6 +12,7 @@ public sealed class LlmSettings
     public string Address { get; set; } = "http://localhost";
     public int Port { get; set; } = 11434;
     public string Model { get; set; } = "";
+    public bool DisableThinking { get; set; } = true;
     public int PromptIndex { get; set; }
     public List<LlmPrompt> Prompts { get; set; } =
     [

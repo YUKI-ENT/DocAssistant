@@ -15,6 +15,13 @@ public partial class SettingsWindow : Window
         TemplateFolder.Text = settings.TemplateFolder;
         registered = settings.GetRegisteredTemplates();
         RsbaseNaming.IsChecked = settings.RsbasePdfNaming;
+        CertificateRsbaseNaming.IsChecked = settings.CertificateRsbaseNaming;
+        CertificateRegistrationTitle.Text = settings.CertificateRegistrationTitle;
+        CertificateDatabasePath.Text = settings.CertificateDatabasePath;
+        ClinicName.Text = settings.CertificateClinic.Name;
+        ClinicAddress.Text = settings.CertificateClinic.Address;
+        ClinicContact.Text = settings.CertificateClinic.Contact;
+        ClinicPhysician.Text = settings.CertificateClinic.Physician;
         Refresh(settings.DefaultTemplate);
     }
     private void Refresh(string? selected = null)
@@ -35,6 +42,11 @@ public partial class SettingsWindow : Window
     {
         var dialog = new OpenFolderDialog { Title = "既定の保存先" };
         if (dialog.ShowDialog(this) == true) SaveFolder.Text = dialog.FolderName;
+    }
+    private void BrowseCertificateDatabase(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "診断書DBを保存するローカルフォルダー" };
+        if (dialog.ShowDialog(this) == true) CertificateDatabasePath.Text = Path.Combine(dialog.FolderName, "certificates.sqlite");
     }
     private void BrowseTemplates(object sender, RoutedEventArgs e)
     {
@@ -74,12 +86,19 @@ public partial class SettingsWindow : Window
         try
         {
             if (!Directory.Exists(SaveFolder.Text)) throw new IOException("保存先には存在するフォルダを選択してください。");
+            if (!Path.IsPathFullyQualified(CertificateDatabasePath.Text.Trim())) throw new ArgumentException("診断書DBには絶対パスを指定してください。");
+            var certificatePath = SqliteCertificateStore.ValidatePath(CertificateDatabasePath.Text.Trim());
+            if (CertificateRsbaseNaming.IsChecked == true) RsbaseFileName.Build("1", "0001", DateTime.Today, CertificateRegistrationTitle.Text);
             if (!string.IsNullOrWhiteSpace(TemplateFolder.Text) && !Directory.Exists(TemplateFolder.Text)) throw new IOException("テンプレートフォルダが見つかりません。");
             UpdateTitle(); Refresh();
             var updated = new AppSettings { SaveFolder = Path.GetFullPath(SaveFolder.Text), TemplateFolder = TemplateFolder.Text.Trim(), Templates = registered.ToList(), RsbasePdfNaming = RsbaseNaming.IsChecked == true, DefaultTemplate = (StartupTemplate.SelectedItem as TemplateItem)?.Path ?? "" };
             updated.AccessDatabasePath = Result.AccessDatabasePath;
             updated.AccessFormName = Result.AccessFormName;
             updated.Llm = Result.Llm;
+            updated.CertificateRsbaseNaming = CertificateRsbaseNaming.IsChecked == true;
+            updated.CertificateRegistrationTitle = CertificateRegistrationTitle.Text.Trim();
+            updated.CertificateDatabasePath = certificatePath;
+            updated.CertificateClinic = new CertificateClinic { Name = ClinicName.Text.Trim(), Address = ClinicAddress.Text.Trim(), Contact = ClinicContact.Text.Trim(), Physician = ClinicPhysician.Text.Trim() };
             updated.Save(); Result = updated; DialogResult = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)

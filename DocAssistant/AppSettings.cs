@@ -18,6 +18,10 @@ public sealed class AppSettings
     public string AccessDatabasePath { get; set; } = "";
     public string AccessFormName { get; set; } = "患者マスター";
     public LlmSettings Llm { get; set; } = new();
+    public CertificateClinic CertificateClinic { get; set; } = new();
+    public bool CertificateRsbaseNaming { get; set; } = true;
+    public string CertificateRegistrationTitle { get; set; } = "英文診断書";
+    public string CertificateDatabasePath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DocAssistant", "Data", "certificates.sqlite");
     private static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)

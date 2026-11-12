@@ -15,6 +15,7 @@ public partial class MainWindow
     private sealed record PayloadOption(string Name, CheckBox Enabled);
     private readonly List<PayloadOption> llmOptions = [];
     private bool changingLlmPeriod;
+    private bool refreshingLlmPrompts;
     private bool llmRequestUsesPatient, llmResultUsesPatient, llmMessageUsesPatient;
 
     internal static DateTime? LlmPeriodStart(string period, DateTime today) => period switch
@@ -48,6 +49,7 @@ public partial class MainWindow
         settings.Llm.Prompts ??= [];
         LlmAddress.Text = settings.Llm.Address;
         LlmPort.Text = settings.Llm.Port.ToString(CultureInfo.InvariantCulture);
+        LlmDisableThinking.IsChecked = settings.Llm.DisableThinking;
         LlmModels.ItemsSource = string.IsNullOrWhiteSpace(settings.Llm.Model) ? Array.Empty<string>() : new[] { settings.Llm.Model };
         LlmModels.SelectedItem = settings.Llm.Model;
         LlmStartDate.SelectedDate = DateTime.Today.AddMonths(-3);
@@ -66,9 +68,14 @@ public partial class MainWindow
     }
     private void RefreshLlmPrompts(int index)
     {
-        LlmPrompts.ItemsSource = null;
-        LlmPrompts.ItemsSource = settings.Llm.Prompts;
-        LlmPrompts.SelectedIndex = settings.Llm.Prompts.Count == 0 ? -1 : Math.Clamp(index, 0, settings.Llm.Prompts.Count - 1);
+        refreshingLlmPrompts = true;
+        try
+        {
+            LlmPrompts.ItemsSource = null;
+            LlmPrompts.ItemsSource = settings.Llm.Prompts;
+            LlmPrompts.SelectedIndex = settings.Llm.Prompts.Count == 0 ? -1 : Math.Clamp(index, 0, settings.Llm.Prompts.Count - 1);
+        }
+        finally { refreshingLlmPrompts = false; }
     }
     private void LlmPromptChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -76,6 +83,12 @@ public partial class MainWindow
         var prompt = LlmPrompts.SelectedItem as LlmPrompt;
         LlmPromptName.Text = prompt?.Name ?? "";
         LlmPromptText.Text = prompt?.Text ?? "";
+        if (prompt != null && !refreshingLlmPrompts && LlmMessage != null)
+        {
+            LlmMessage.Text = prompt.Text; llmMessageUsesPatient = false;
+            settings.Llm.PromptIndex = LlmPrompts.SelectedIndex;
+            LlmStatus.Text = "選択した定型プロンプトを今回の送信文に反映しました。";
+        }
     }
     private Uri ReadLlmEndpoint()
     {
@@ -87,6 +100,7 @@ public partial class MainWindow
         _ = ReadLlmEndpoint();
         settings.Llm.Address = LlmAddress.Text.Trim();
         settings.Llm.Port = int.Parse(LlmPort.Text);
+        settings.Llm.DisableThinking = LlmDisableThinking.IsChecked == true;
         settings.Llm.PromptIndex = LlmPrompts.SelectedIndex;
         settings.Save();
     }
@@ -279,6 +293,7 @@ public partial class MainWindow
     {
         var endpoint = ReadLlmEndpoint();
         var model = LlmModels.SelectedItem as string ?? ""; var prompt = LlmMessage.Text;
+        bool disableThinking = LlmDisableThinking.IsChecked == true;
         if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(prompt)) throw new InvalidOperationException("モデルと今回の送信文を指定してください。");
         bool attach = LlmAttachChart.IsChecked == true;
         bool usesPatient = attach || llmMessageUsesPatient;
@@ -289,7 +304,7 @@ public partial class MainWindow
         var payload = attach ? await PrepareLlmPayload(token) : null;
         token.ThrowIfCancellationRequested();
         LlmStatus.Text = $"{endpoint.Host}:{endpoint.Port} / {model} で生成中…";
-        var result = await client.GenerateAsync(endpoint, LlmKey.Password, model, prompt, payload, token);
+        var result = await client.GenerateAsync(endpoint, LlmKey.Password, model, prompt, payload, token, disableThinking);
         token.ThrowIfCancellationRequested();
         if (usesPatient && version != llmPatientVersion) throw new OperationCanceledException(token);
         if (chartClosed) return;
@@ -327,6 +342,31 @@ public partial class MainWindow
         LlmAttachChart.IsChecked = false;
         LlmMessage.Focus(); LlmMessage.CaretIndex = 0; LlmMessage.ScrollToHome();
         LlmStatus.Text = "結果を取り込み、カルテ添付をOFFにしました。先頭に「以下を英訳してください」などの指示を入力してください。";
+    }
+
+    private void ImportLlmResultToCertificate(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string text = LlmResult.Selection.IsEmpty
+                ? new TextRange(LlmResult.Document.ContentStart, LlmResult.Document.ContentEnd).Text
+                : LlmResult.Selection.Text;
+            if (ImportCertificateText(LlmCertificateTarget.SelectedIndex, text, () =>
+                MessageBox.Show(this, "選択した項目の本文をAIの生成結果で置き換えますか？", "英文診断書への取り込み", MessageBoxButton.YesNo) == MessageBoxResult.Yes))
+                LlmStatus.Text = "生成結果を診断書へ取り込みました。内容を確認してください。";
+        }
+        catch (Exception ex) { LlmStatus.Text = ex.Message; }
+    }
+    private bool ImportCertificateText(int target, string text, Func<bool> confirmReplace)
+    {
+        if (target is < 0 or >= 4) throw new InvalidOperationException("診断書の取り込み先を選択してください。");
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("取り込む生成結果がありません。");
+        if (certificate.PatientKey != "" && certificate.PatientKey != certificateCurrentKey)
+            throw new InvalidOperationException("作成中の診断書とカルテの患者が一致していません。対象患者を確認してください。");
+        if (!string.IsNullOrWhiteSpace(certificateSections[target].Text) && !confirmReplace()) return false;
+        certificateSections[target].Text = text.Trim();
+        certificateStatus.Text = $"{MedicalCertificate.Labels[target]}にAIの生成結果を取り込みました。内容を確認してください。";
+        return true;
     }
 
     private void ClearLlmMessage(object sender, RoutedEventArgs e)

@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
     <PackageReference Include="PDFtoImage" Version="5.4.0" />
   </ItemGroup>

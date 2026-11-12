@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializeCertificate();
         Title = $"DocAssistant {AppVersion.Display} — ハイブリッド記入";
         AppVersionLabel.Text = AppVersion.Display;
         EnableChartDrag(ChartDraft);
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         Loaded += async (_, _) =>
         {
+            if (args.Contains("--certificate-test")) { InitializeLlm(); await TestCertificateAsync(); return; }
             if (args.Contains("--notes-test")) { await TestNotesAsync(); return; }
             if (args.Contains("--referral-test")) { await TestReferrals(); return; }
             if (args.Contains("--pdf-export-test")) { await TestPdfExport(); return; }
@@ -70,6 +72,9 @@ public partial class MainWindow : Window
                 catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
                 { MessageBox.Show(this, "設定を読み込めなかったため、既定値で起動します。\n" + ex.Message, "設定"); }
                 InitializeLlm();
+                changingCertificate = true; SetCertificateClinic(settings.CertificateClinic); changingCertificate = false;
+                certificateAutoLoadEnabled = true;
+                if (WorkspaceTabs.SelectedItem == CertificateTab) LoadLatestCertificateForCurrentPatient();
                 RefreshTemplates();
                 var startup = TemplateBox.Items.OfType<TemplateItem>().FirstOrDefault(t => t.Path == settings.DefaultTemplate);
                 if (startup != null)
@@ -90,12 +95,13 @@ public partial class MainWindow : Window
     {
         LifecycleLog.Write($"Window.Closing busy={busy} dirty={dirty} windows={Application.Current.Windows.Count}");
         if (busy || referralBusy) { closeRequested = true; e.Cancel = true; Status.Text = "処理完了後に終了します。"; return; }
-        e.Cancel = !CanReplace() || !CanDiscardReferral();
+        e.Cancel = !CanReplace() || !CanDiscardReferral() || !CanDiscardCertificate();
         LifecycleLog.Write(e.Cancel ? "Close cancelled by user" : "Close accepted");
     }
     protected override void OnClosed(EventArgs e)
     {
         typingTimer.Stop();
+        certificateSaveTimer.Stop();
         StopChartMonitor();
         llmCancellation?.Cancel();
         llmClient.Dispose();
@@ -144,10 +150,18 @@ public partial class MainWindow : Window
     private void OpenSettings(object sender, RoutedEventArgs e)
     {
         FinishEditing();
+        if (!CanDiscardCertificate()) return;
+        string previousCertificateDatabase = settings.CertificateDatabasePath;
         var dialog = new SettingsWindow(settings) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
             settings = dialog.Result;
+            if (!string.Equals(previousCertificateDatabase, settings.CertificateDatabasePath, StringComparison.OrdinalIgnoreCase))
+            {
+                DisplayCertificate(new MedicalCertificate());
+                changingCertificate = true; SetCertificateClinic(settings.CertificateClinic); changingCertificate = false;
+                certificateStatus.Text = "診断書DBの保存先を切り替えました。保存履歴から文書を開いてください。既存のDBは移動していません。";
+            }
             try { RefreshTemplates(); Status.Text = "保存先とテンプレートの設定を更新しました。"; }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "テンプレート一覧"); }
         }

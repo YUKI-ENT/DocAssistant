@@ -2,6 +2,11 @@
 **/obj/
 tmp/
 *.pdfwrite
+*.medcert
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 *.mdb
 *.mde
 *.accdb

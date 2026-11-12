@@ -59,10 +59,12 @@ public partial class MainWindow
         if (!ready || !ReferenceEquals(e.OriginalSource, WorkspaceTabs)) return;
         FinishEditing();
         CancelGesture();
+        LlmCertificateTransfer.Visibility = WorkspaceTabs.SelectedItem == CertificateTab ? Visibility.Visible : Visibility.Collapsed;
+        if (WorkspaceTabs.SelectedItem == CertificateTab) LoadLatestCertificateForCurrentPatient();
         Status.Text = WorkspaceTabs.SelectedIndex == 0
             ? "PDF編集 · カルテ情報をドラッグして挿入できます。"
             : WorkspaceTabs.SelectedItem == ReferralTab ? "紹介状作成 · 保存はAccessの紹介状テーブル、印刷はAccess側で行います。"
-            : "文書作成機能は準備中です。右側のカルテ情報は引き続き参照できます。";
+            : "英文診断書 · 項目別に編集し、プレビューを確認してPDF出力できます。";
         if (WorkspaceTabs.SelectedItem == ReferralTab && !referralDirty &&
             (!referralLoaded || editingReferralPatient?.SameIdentity(currentReferralPatient) != true))
             await LoadReferralHistoryAsync(false);
