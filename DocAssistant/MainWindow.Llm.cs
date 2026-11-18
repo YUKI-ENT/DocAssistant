@@ -49,6 +49,12 @@ public partial class MainWindow
         settings.Llm.Prompts ??= [];
         LlmAddress.Text = settings.Llm.Address;
         LlmPort.Text = settings.Llm.Port.ToString(CultureInfo.InvariantCulture);
+        if (!settings.Llm.TryGetApiKey(out var apiKey))
+        {
+            LlmConnectionExpander.IsExpanded = true;
+            LlmStatus.Text = "保存済みAPIキーを復元できません。同じWindowsユーザーで開くか、キーを再入力して接続設定を保存してください。";
+        }
+        LlmKey.Password = apiKey;
         LlmDisableThinking.IsChecked = settings.Llm.DisableThinking;
         LlmModels.ItemsSource = string.IsNullOrWhiteSpace(settings.Llm.Model) ? Array.Empty<string>() : new[] { settings.Llm.Model };
         LlmModels.SelectedItem = settings.Llm.Model;
@@ -98,6 +104,7 @@ public partial class MainWindow
     private void PersistLlm()
     {
         _ = ReadLlmEndpoint();
+        settings.Llm.SetApiKey(LlmKey.Password);
         settings.Llm.Address = LlmAddress.Text.Trim();
         settings.Llm.Port = int.Parse(LlmPort.Text);
         settings.Llm.DisableThinking = LlmDisableThinking.IsChecked == true;

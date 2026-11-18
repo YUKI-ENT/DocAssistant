@@ -30,18 +30,22 @@ public sealed class AppSettings
     }
     public static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DocAssistant", "settings.json");
     public static AppSettings Load()
+        => Load(SettingsPath);
+    internal static AppSettings Load(string path)
     {
-        if (!File.Exists(SettingsPath)) return new();
-        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new();
+        if (!File.Exists(path)) return new();
+        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new();
     }
     public void Save()
+        => Save(SettingsPath);
+    internal void Save(string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        var temp = SettingsPath + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temp = path + ".tmp";
         try
         {
             File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
-            File.Move(temp, SettingsPath, true);
+            File.Move(temp, path, true);
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }

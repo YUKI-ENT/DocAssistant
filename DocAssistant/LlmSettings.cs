@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace DocAssistant;
 
 public sealed class LlmPrompt
@@ -9,6 +12,38 @@ public sealed class LlmPrompt
 
 public sealed class LlmSettings
 {
+    // Persist only DPAPI ciphertext. Never add a serializable plaintext key property.
+    public string ProtectedApiKey { get; set; } = "";
+
+    public void SetApiKey(string apiKey)
+    {
+        if (string.IsNullOrEmpty(apiKey)) { ProtectedApiKey = ""; return; }
+        var bytes = Encoding.UTF8.GetBytes(apiKey);
+        try
+        {
+            ProtectedApiKey = Convert.ToBase64String(ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser));
+        }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
+
+    public bool TryGetApiKey(out string apiKey)
+    {
+        apiKey = "";
+        if (string.IsNullOrEmpty(ProtectedApiKey)) return true;
+        try
+        {
+            var bytes = ProtectedData.Unprotect(Convert.FromBase64String(ProtectedApiKey), null, DataProtectionScope.CurrentUser);
+            try { apiKey = Encoding.UTF8.GetString(bytes); }
+            finally { CryptographicOperations.ZeroMemory(bytes); }
+            return true;
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            // Preserve unreadable ciphertext until the user explicitly saves a replacement.
+            return false;
+        }
+    }
+
     public string Address { get; set; } = "http://localhost";
     public int Port { get; set; } = 11434;
     public string Model { get; set; } = "";

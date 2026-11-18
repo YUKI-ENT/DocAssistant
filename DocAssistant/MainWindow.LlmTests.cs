@@ -30,6 +30,7 @@ public partial class MainWindow
         var folder = Path.GetFullPath("tmp/llm-test"); Directory.CreateDirectory(folder);
         try
         {
+            TestLlmApiKeyPersistence(folder);
             int initialPrompt = LlmPrompts.SelectedIndex;
             LlmMessage.Text = "手編集した送信文"; llmMessageUsesPatient = true;
             LlmPrompts.SelectedIndex = initialPrompt == 0 ? 1 : 0;
@@ -262,9 +263,45 @@ public partial class MainWindow
             LlmPayloadSettings.IsExpanded = false;
             LlmConnectionExpander.IsExpanded = true;
             RenderVisual(this, Path.Combine(folder, "connection.png"), 1740, 940);
-            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: prompt selection updates send text; list refresh preserves edits; thinking checkbox default, settings roundtrip and exact ON/OFF request payloads; endpoint, models, authentication, HTTP errors, cancellation, patient isolation, payload-free chat without Access, exact message, result reuse, failure retention, pane layout");
+            File.WriteAllText(Path.Combine(folder, "result.txt"), "PASS: DPAPI API key encrypted file save/load, replacement, deletion, legacy settings, corrupt ciphertext recovery; prompt selection updates send text; list refresh preserves edits; thinking checkbox default, settings roundtrip and exact ON/OFF request payloads; endpoint, models, authentication, HTTP errors, cancellation, patient isolation, payload-free chat without Access, exact message, result reuse, failure retention, pane layout");
         }
         catch (Exception ex) { File.WriteAllText(Path.Combine(folder, "result.txt"), ex.ToString()); Environment.ExitCode = 1; }
         finally { Close(); }
+    }
+
+    private static void TestLlmApiKeyPersistence(string folder)
+    {
+        const string key = "test-only-api-key-日本語";
+        var path = Path.Combine(folder, "api-key-settings.json");
+        try
+        {
+            var original = JsonSerializer.Deserialize<AppSettings>("{\"Llm\":{\"Port\":1234}}")!;
+            Check(original.Llm.TryGetApiKey(out var empty) && empty == "", "Existing settings without key remain compatible");
+            original.Llm.SetApiKey(key);
+            original.Save(path);
+            string json = File.ReadAllText(path);
+            Check(!json.Contains("test-only-api-key") && !json.Contains("日本語") && !File.Exists(path + ".tmp"), "Only ciphertext reaches settings file; temp file removed");
+            var loaded = AppSettings.Load(path);
+            Check(loaded.Llm.Port == 1234 && loaded.Llm.TryGetApiKey(out var restoredKey) && restoredKey == key, "DPAPI key survives actual file save/load for current Windows user");
+            loaded.Llm.SetApiKey("replacement-test-key");
+            loaded.Save(path);
+            Check(AppSettings.Load(path).Llm.TryGetApiKey(out restoredKey) && restoredKey == "replacement-test-key", "API key replacement survives restart");
+            foreach (var invalid in new[] { "invalid-base64!", Convert.ToBase64String(new byte[32]) })
+            {
+                loaded.Llm.ProtectedApiKey = invalid;
+                loaded.Save(path);
+                var corrupt = AppSettings.Load(path);
+                Check(!corrupt.Llm.TryGetApiKey(out restoredKey) && restoredKey == "" && corrupt.Llm.Port == 1234, "Unreadable key does not prevent loading other settings");
+                corrupt.Save(path);
+                Check(AppSettings.Load(path).Llm.ProtectedApiKey == invalid, "Unrelated settings save preserves unreadable ciphertext");
+                corrupt.Llm.SetApiKey(key);
+                Check(corrupt.Llm.TryGetApiKey(out restoredKey) && restoredKey == key, "Reentry recovers from unreadable key");
+            }
+            loaded.Llm.SetApiKey("");
+            loaded.Save(path);
+            var deleted = AppSettings.Load(path);
+            Check(deleted.Llm.ProtectedApiKey == "" && deleted.Llm.TryGetApiKey(out restoredKey) && restoredKey == "", "Clearing key removes persisted credential");
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
     }
 }
