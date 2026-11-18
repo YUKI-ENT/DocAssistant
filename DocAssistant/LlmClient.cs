@@ -29,10 +29,24 @@ internal sealed class LlmClient : IDisposable
         using var request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, uri);
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
         if (body != null) request.Content = JsonContent.Create(body);
-        using var response = await http.SendAsync(request, token);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"LLM API: HTTP {(int)response.StatusCode}。接続先、認証、モデル、コンテキスト長を確認してください。");
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+        try
+        {
+            using var response = await http.SendAsync(request, token);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"LLM API ({uri}): HTTP {(int)response.StatusCode}。接続先とAPIキーを確認してください。");
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+        }
+        catch (HttpRequestException ex)
+        {
+            var reason = ex.HttpRequestError switch
+            {
+                HttpRequestError.SecureConnectionError => "TLS接続に失敗しました。証明書の信頼、有効期限、接続先名を確認してください。",
+                HttpRequestError.ConnectionError => "サーバーに接続できません。アドレス、ポート、ネットワークを確認してください。",
+                HttpRequestError.NameResolutionError => "ホスト名を解決できません。",
+                _ => "通信に失敗しました。"
+            };
+            throw new InvalidOperationException($"LLM API ({uri}): {reason} {ex.GetBaseException().Message}", ex);
+        }
     }
     internal async Task<string[]> ModelsAsync(Uri endpoint, string key, CancellationToken token)
     {
