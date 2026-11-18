@@ -75,11 +75,11 @@
 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
 <StackPanel x:Name="LlmInputs">
 <Expander x:Name="LlmConnectionExpander" Header="接続設定" IsExpanded="False"><Border BorderBrush="#71AEB2" BorderThickness="3,0,0,0" Background="#EFF6F7" Padding="12,8,8,8" Margin="10,8,0,12"><StackPanel>
-<TextBlock Text="アドレス（例 http://localhost）" Style="{StaticResource Label}"/>
+<TextBlock Text="接続先URL（例 https://llm.example.com）" Style="{StaticResource Label}"/>
 <TextBox x:Name="LlmAddress" InputMethod.PreferredImeState="Off"/>
-<Grid Margin="0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="ポート" Style="{StaticResource Label}"/><TextBox x:Name="LlmPort" InputMethod.PreferredImeState="Off" Margin="0,0,8,0"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="APIキー（任意）" Style="{StaticResource Label}"/><PasswordBox x:Name="LlmKey" InputMethod.PreferredImeState="Off" Padding="8,6"/></StackPanel></Grid>
+<Grid Margin="0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="ポート（任意）" Style="{StaticResource Label}"/><TextBox x:Name="LlmPort" InputMethod.PreferredImeState="Off" Margin="0,0,8,0"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="APIキー（任意）" Style="{StaticResource Label}"/><PasswordBox x:Name="LlmKey" InputMethod.PreferredImeState="Off" Padding="8,6"/></StackPanel></Grid>
 <TextBlock Text="APIキーはWindowsユーザーごとに暗号化して保存します。削除するにはキー欄を空にして接続設定を保存してください。" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
-<TextBlock Text="Ollama: 11434 / LM Studio: 1234" Foreground="#64748B" FontSize="11"/>
+<TextBlock Text="ポート欄が空の場合はURLのポートを使用します。省略時は HTTPS 443、HTTP 80。Ollama の既定は 11434、LM Studio は 1234。" TextWrapping="Wrap" Foreground="#64748B" FontSize="11"/>
 <CheckBox x:Name="LlmDisableThinking" Content="thinkingを無効にする（対応モデル）" IsChecked="True" Margin="0,10,0,4"/>
 <TextBlock Text="ONで無効化を要求し、OFFではサーバーの既定動作を使います。英文診断書の生成にも適用します。" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
 <WrapPanel><Button Content="接続設定を保存" Click="SaveLlmSettings"/><Button Content="モデル取得" Click="LoadLlmModels"/></WrapPanel>

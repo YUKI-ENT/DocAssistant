@@ -48,7 +48,7 @@ public partial class MainWindow
         settings.Llm ??= new();
         settings.Llm.Prompts ??= [];
         LlmAddress.Text = settings.Llm.Address;
-        LlmPort.Text = settings.Llm.Port.ToString(CultureInfo.InvariantCulture);
+        LlmPort.Text = settings.Llm.Port?.ToString(CultureInfo.InvariantCulture) ?? "";
         if (!settings.Llm.TryGetApiKey(out var apiKey))
         {
             LlmConnectionExpander.IsExpanded = true;
@@ -96,17 +96,20 @@ public partial class MainWindow
             LlmStatus.Text = "選択した定型プロンプトを今回の送信文に反映しました。";
         }
     }
-    private Uri ReadLlmEndpoint()
+    private int? ReadLlmPort()
     {
+        if (string.IsNullOrWhiteSpace(LlmPort.Text)) return null;
         if (!int.TryParse(LlmPort.Text, out int port)) throw new InvalidOperationException("ポートには数値を指定してください。");
-        return LlmClient.BaseUri(LlmAddress.Text.Trim(), port);
+        return port;
     }
+    private Uri ReadLlmEndpoint() => LlmClient.BaseUri(LlmAddress.Text.Trim(), ReadLlmPort());
+
     private void PersistLlm()
     {
         _ = ReadLlmEndpoint();
         settings.Llm.SetApiKey(LlmKey.Password);
         settings.Llm.Address = LlmAddress.Text.Trim();
-        settings.Llm.Port = int.Parse(LlmPort.Text);
+        settings.Llm.Port = ReadLlmPort();
         settings.Llm.DisableThinking = LlmDisableThinking.IsChecked == true;
         settings.Llm.PromptIndex = LlmPrompts.SelectedIndex;
         settings.Save();

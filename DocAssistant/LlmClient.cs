@@ -13,7 +13,7 @@ internal sealed class LlmClient : IDisposable
         http = handler == null ? new(new HttpClientHandler { AllowAutoRedirect = false }) : new(handler);
         http.Timeout = TimeSpan.FromMinutes(5);
     }
-    internal static Uri BaseUri(string address, int port)
+    internal static Uri BaseUri(string address, int? port)
     {
         if (!address.Contains("://")) address = "http://" + address;
         if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) ||
@@ -22,7 +22,7 @@ internal sealed class LlmClient : IDisposable
             port is < 1 or > 65535)
             throw new InvalidOperationException("接続先とポート（1～65535）を確認してください。");
         var path = uri.AbsolutePath.TrimEnd('/');
-        return new UriBuilder(uri) { Port = port, Path = path.EndsWith("/v1", StringComparison.Ordinal) ? path + "/" : path + "/v1/" }.Uri;
+        return new UriBuilder(uri) { Port = port ?? uri.Port, Path = path.EndsWith("/v1", StringComparison.Ordinal) ? path + "/" : path + "/v1/" }.Uri;
     }
     private async Task<JsonDocument> SendAsync(Uri uri, object? body, string key, CancellationToken token)
     {

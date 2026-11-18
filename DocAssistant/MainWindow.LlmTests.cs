@@ -47,7 +47,8 @@ public partial class MainWindow
             var endpoint = LlmClient.BaseUri("localhost", 11434);
             Check(endpoint.ToString() == "http://localhost:11434/v1/", "Ollama URL");
             Check(LlmClient.BaseUri("http://localhost/v1/", 1234).ToString() == "http://localhost:1234/v1/", "LM Studio URL");
-            Check(LlmClient.BaseUri("https://example.org/proxy", 443).AbsolutePath == "/proxy/v1/", "Proxy prefix");
+            Check(LlmClient.BaseUri("https://example.org/proxy", null).AbsoluteUri == "https://example.org/proxy/v1/", "HTTPS default port and proxy prefix");
+            Check(LlmClient.BaseUri("https://example.org:8443/v1", null).AbsoluteUri == "https://example.org:8443/v1/", "HTTPS port in URL");
             foreach (var address in new[] { "ftp://localhost", "http://user:pass@localhost", "http://localhost?secret=x" })
             {
                 bool rejected = false; try { LlmClient.BaseUri(address, 1234); } catch (InvalidOperationException) { rejected = true; }
